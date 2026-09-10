@@ -261,7 +261,16 @@
             },
             "Store": {
                 "id": "ID",
-                "country_code": "countryCode"
+                "name": "name",
+                "address1": "address1",
+                "address2": "address2",
+                "city": "city",
+                "zip": "postalCode",
+                "province_code": "stateCode",
+                "country_code": "countryCode",
+                "phone": "phone",
+                "created_at": "creationDate",
+                "updated_at": "lastModified"
             },
             "InventoryList": {
                 "id": "ID",
@@ -1132,24 +1141,24 @@
                         "source": null
                     },
                     "address1": {
-                        "status": "pending",
-                        "source": null
+                        "status": "mapped",
+                        "source": "address1"
                     },
                     "address2": {
-                        "status": "pending",
-                        "source": null
+                        "status": "mapped",
+                        "source": "address2"
                     },
                     "city": {
-                        "status": "pending",
-                        "source": null
+                        "status": "mapped",
+                        "source": "city"
                     },
                     "countryCode": {
                         "status": "mapped",
                         "source": "country_code"
                     },
                     "creationDate": {
-                        "status": "pending",
-                        "source": null
+                        "status": "mapped",
+                        "source": "created_at"
                     },
                     "email": {
                         "status": "pending",
@@ -1168,8 +1177,8 @@
                         "source": null
                     },
                     "lastModified": {
-                        "status": "pending",
-                        "source": null
+                        "status": "mapped",
+                        "source": "updated_at"
                     },
                     "latitude": {
                         "status": "pending",
@@ -1180,24 +1189,24 @@
                         "source": null
                     },
                     "name": {
-                        "status": "pending",
-                        "source": null
+                        "status": "mapped",
+                        "source": "name"
                     },
                     "phone": {
-                        "status": "pending",
-                        "source": null
+                        "status": "mapped",
+                        "source": "phone"
                     },
                     "posEnabled": {
                         "status": "pending",
                         "source": null
                     },
                     "postalCode": {
-                        "status": "pending",
-                        "source": null
+                        "status": "mapped",
+                        "source": "zip"
                     },
                     "stateCode": {
-                        "status": "pending",
-                        "source": null
+                        "status": "mapped",
+                        "source": "province_code"
                     },
                     "storeEvents": {
                         "status": "pending",
@@ -1212,8 +1221,8 @@
                         "source": null
                     }
                 },
-                "mappedCount": 2,
-                "pendingCount": 20,
+                "mappedCount": 11,
+                "pendingCount": 11,
                 "sfccSystemCount": 22
             },
             "InventoryList": {
