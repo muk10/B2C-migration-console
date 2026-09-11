@@ -1,5 +1,8 @@
 'use strict';
 
+var sourceAttrIds    = require('*/cartridge/scripts/migration/core/sourceAttrIds');
+var attrIdMapSession = require('*/cartridge/scripts/migration/core/attrIdMapSession');
+
 /**
  * Transform a Shopify address into an SFCC address payload.
  * @param {Object}  addr        - Shopify address object
@@ -43,6 +46,46 @@ function parseTags(tags) {
 }
 
 /**
+ * Shopify returns list metafield values as JSON strings. Preserve them as arrays
+ * so SFCC set attributes work in both Script API writes and customer IMPEX XML.
+ * @param {*} value
+ * @param {string} type
+ * @returns {*}
+ */
+function resolveMetafieldValue(value, type) {
+    if (String(type || '').indexOf('list.') !== 0 || typeof value !== 'string') return value;
+    try {
+        var parsed = JSON.parse(value);
+        return Array.isArray(parsed) ? parsed : value;
+    } catch (e) {
+        return value;
+    }
+}
+
+/**
+ * Add Shopify customer metafields as Profile custom attributes.
+ * Attribute IDs match the preflight convention: spy_<namespace>__<key>.
+ * @param {Object} profile
+ * @param {Object[]} metafields
+ */
+function mapMetafields(profile, metafields) {
+    var attrMap = attrIdMapSession.read('customer');
+    var list = metafields || [];
+
+    for (var i = 0; i < list.length; i++) {
+        var metafield = list[i] || {};
+        if (!metafield.key || metafield.value === null || metafield.value === undefined) continue;
+
+        var rawId = metafield.namespace
+            ? metafield.namespace + '__' + metafield.key
+            : metafield.key;
+        var canonicalId = sourceAttrIds.toAttrId(rawId, 'shopify');
+        var sfccAttrId = attrIdMapSession.resolve(canonicalId, attrMap);
+        profile['c_' + sfccAttrId] = resolveMetafieldValue(metafield.value, metafield.type);
+    }
+}
+
+/**
  * Transform a Shopify customer record into SFCC customer creation payloads.
  * @param {Object} shopifyCustomer - Shopify customer object (REST Admin API)
  * @returns {{ profile: Object, addresses: Array }}
@@ -61,17 +104,15 @@ function transformCustomer(shopifyCustomer) {
 
     if (shopifyCustomer.first_name) profile.first_name = shopifyCustomer.first_name;
     if (shopifyCustomer.last_name)  profile.last_name   = shopifyCustomer.last_name;
+    if (shopifyCustomer.locale) profile.preferred_locale = String(shopifyCustomer.locale).replace(/-/g, '_');
 
-    // Store Shopify identifiers/fields as custom attributes for traceability
-    profile.c_shopify_customer_id = String(shopifyCustomer.id);
-    // Phone has a native SFCC Profile equivalent (phoneMobile) — no shadow custom attribute needed.
+    // Keep migration-only identifiers outside c_*; they are not SFCC attributes.
+    profile.source_customer_id = String(shopifyCustomer.id);
+    // Phone has a native SFCC Profile equivalent (phoneMobile).
     if (shopifyCustomer.phone)             profile.phone                       = shopifyCustomer.phone;
-    if (shopifyCustomer.note)              profile.c_shopify_note              = shopifyCustomer.note;
-    if (shopifyCustomer.tags)              profile.c_shopify_tags              = parseTags(shopifyCustomer.tags);
-    if (shopifyCustomer.verified_email !== undefined)    profile.c_shopify_verified_email    = shopifyCustomer.verified_email;
-    if (shopifyCustomer.accepts_marketing !== undefined) profile.c_shopify_accepts_marketing = shopifyCustomer.accepts_marketing;
-    if (shopifyCustomer.orders_count !== undefined)      profile.c_shopify_orders_count      = shopifyCustomer.orders_count;
-    if (shopifyCustomer.total_spent !== undefined)       profile.c_shopify_total_spent       = shopifyCustomer.total_spent;
+    if (shopifyCustomer.tags) profile.shopify_tags = parseTags(shopifyCustomer.tags);
+
+    mapMetafields(profile, shopifyCustomer.metafields);
 
     // Transform addresses
     var addresses      = [];
@@ -88,4 +129,10 @@ function transformCustomer(shopifyCustomer) {
     return { profile: profile, addresses: addresses };
 }
 
-module.exports = { transformCustomer: transformCustomer, transformAddress: transformAddress, parseTags: parseTags };
+module.exports = {
+    transformCustomer: transformCustomer,
+    transformAddress:  transformAddress,
+    parseTags:         parseTags,
+    resolveMetafieldValue: resolveMetafieldValue,
+    mapMetafields:     mapMetafields
+};

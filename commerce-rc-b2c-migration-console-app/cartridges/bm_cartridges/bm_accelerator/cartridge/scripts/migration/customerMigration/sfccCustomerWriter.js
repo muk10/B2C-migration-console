@@ -32,7 +32,7 @@ function createCustomer(token, listId, profile, password) {
         // CustomerMgr.createCustomer(login, pass, customerNo:String) sets a specific number.
         // CustomerMgr.createCustomer(login, pass, list:CustomerList) auto-generates a numeric ID
         // (used when the source system has no native customer number to carry over).
-        var sourceNo = profile.customer_no || profile.c_shopify_customer_id || null;
+        var sourceNo = profile.customer_no || profile.source_customer_id || null;
         var customer = sourceNo
             ? CustomerMgr.createCustomer(login, password, String(sourceNo))
             : CustomerMgr.createCustomer(login, password, list);
