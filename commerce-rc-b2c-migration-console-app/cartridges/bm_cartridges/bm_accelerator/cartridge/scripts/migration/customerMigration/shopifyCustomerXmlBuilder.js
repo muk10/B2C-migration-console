@@ -26,12 +26,7 @@ function buildCustomerXml(shopifyCustomer) {
     xml += '            <password encrypted="false">' + xmlEsc(password) + '</password>\n';
     xml += '        </credentials>\n';
 
-    xml += '        <profile>\n';
-    if (profile.first_name) xml += '            <first-name>' + xmlEsc(profile.first_name) + '</first-name>\n';
-    if (profile.last_name)  xml += '            <last-name>'  + xmlEsc(profile.last_name)  + '</last-name>\n';
-    if (profile.email)      xml += '            <email>'      + xmlEsc(profile.email)      + '</email>\n';
-    if (profile.phone)      xml += '            <phone-mobile>' + xmlEsc(profile.phone)     + '</phone-mobile>\n';
-    xml += '        </profile>\n';
+    xml += ctpXmlBuilder.buildProfileXml(profile);
 
     if (addresses.length > 0) {
         xml += '        <addresses>\n';

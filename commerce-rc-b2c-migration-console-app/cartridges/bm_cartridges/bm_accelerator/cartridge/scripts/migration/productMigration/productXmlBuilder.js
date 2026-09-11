@@ -372,17 +372,17 @@ function variationAxisDisplayName(attrId) {
 
 /**
  * Build <page-attributes> block.
- * Reference order: page-title → page-description → page-url
+ * catalog.xsd: page-title → page-description → page-keywords → page-url
  */
 function buildPageAttributes(t) {
     var indent = '            ';
     var inner = '';
     inner += localizedElementsXml(indent, 'page-title', localeOrString(t.metaTitleLocales, t.metaTitle));
     inner += localizedElementsXml(indent, 'page-description', localeOrString(t.metaDescriptionLocales, t.metaDescription));
-    inner += localizedElementsXml(indent, 'page-url', localeOrString(t.slugLocales, t.slug));
     if (t.metaKeywordsLocales || t.metaKeywords) {
         inner += localizedElementsXml(indent, 'page-keywords', localeOrString(t.metaKeywordsLocales, t.metaKeywords));
     }
+    inner += localizedElementsXml(indent, 'page-url', localeOrString(t.slugLocales, t.slug));
     if (!inner) return '        <page-attributes/>\n';
     return '        <page-attributes>\n' + inner + '        </page-attributes>\n';
 }

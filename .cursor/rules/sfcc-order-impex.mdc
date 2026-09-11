@@ -1,0 +1,59 @@
+---
+description: SFCC order IMPEX XML must follow order.xsd element order
+globs:
+  - commerce-rc-b2c-migration-console-app/cartridges/bm_cartridges/bm_accelerator/cartridge/scripts/migration/orders/**/*.{js,isml}
+  - test/unit/bm_accelerator/orders/**/*.js
+alwaysApply: false
+---
+
+# Order IMPEX (order.xsd)
+
+Before changing order XML generators or validators, **read** `.cursor/references/sfcc-xsd/order.xsd`. Sequences are ordered. A valid element in the wrong place fails import (`cvc-complex-type.2.4.a`).
+
+Namespace: `http://www.demandware.com/xml/impex/order/2006-10-31`. Root is `<orders>` (optional `version`). Skip empty optional elements. Do not invent tags. Do **not** emit `place-date` (internal only).
+
+## Order (`complexType.Order`)
+
+`order-no` is required. `order-date` and `currency` are required except delete mode.
+
+`order-date` → `created-by` → `original-order-no` → `currency` → `customer-locale` → `taxation` → `source-code` → `affiliate-partner-name` → `affiliate-partner-id` → `invoice-no` → `customer` → `customer-order-reference` → `status` → `business-type` → `channel-type` → replace/cancel fields → `product-lineitems` → `giftcertificate-lineitems` → `shipping-lineitems` → `shipments` → `tax-rounded-at-group` → `totals` → `payments` → `remoteHost` → `notes` → `external-order-*` → `global-party-id` → `custom-attributes`
+
+**Runtime maps** (Check Attributes `attrIdMap_order`): custom fields are resolved at write time. OOTB targets (`customerEmail`, `externalOrderNo`, …) become order/customer elements; custom targets become `<custom-attribute>`. Never emit OOTB ids as custom-attributes.
+
+There is **no** order-level `shipping-address`. Shipping address lives on `<shipment>`.
+
+## Customer (order customer, not customer.xsd)
+
+`guest` → `customer-no` → `customer-name` → `customer-email` → `billing-address`
+
+`guest` is required when `orders@version` is 19.2 or later.
+
+## Address (order)
+
+Same name block as customer IMPEX: … → `company-name` → `job-title` → `address1` → `address2` → `suite` → **`postbox`** (not `post-box`) → `city` → `postal-code` → `state-code` → `country-code` → `phone` → `custom-attributes`
+
+## Status
+
+`order-status` → `shipping-status` → `confirmation-status` → `payment-status` → `export-status`
+
+## Line items (extend Amounts)
+
+Every line item starts with Amounts then LineItemAmounts: **`net-price` → `tax` → `gross-price` → `base-price` → `lineitem-text` → `tax-basis`**, then type-specific children.
+
+Product line item required: `product-id`, `quantity`, `tax-rate`, `shipment-id` (must match a `<shipment shipment-id>`). Then options / bundled / product shipping / gift / custom-attributes / **`price-adjustments` last**.
+
+Shipping line item: amounts → `price-adjustments` → `item-id` → `shipment-id` → `tax-rate` → `custom-attributes`.
+
+## Shipment
+
+`shipment-id` required. `status` → `shipping-method` → `tracking-number` → `shipping-address` → `gift` → `gift-message` → `totals` → `custom-attributes`
+
+## Totals
+
+`merchandize-total` → `adjusted-merchandize-total` → `shipping-total` → `adjusted-shipping-total` → `order-total` (shipment uses `shipment-total` instead of `order-total`). Each total: `net-price` → `tax` → `gross-price` → optional `price-adjustments`.
+
+## Payment
+
+Choice of instrument (`credit-card` | `bank-transfer` | `bml` | `gift-certificate` | `dw-apple-pay` | `dw-android-pay` | `salesforce-payments` | `custom-method`) → `amount` → `processor-id` → `transaction-id` → `transaction-type` → `account-id` → `account-type` → `custom-attributes`
+
+Builders: `generators/sfccOrderXmlGenerator.js`, `generators/impexGenerator.js`. Tests: `test/unit/bm_accelerator/orders/`.

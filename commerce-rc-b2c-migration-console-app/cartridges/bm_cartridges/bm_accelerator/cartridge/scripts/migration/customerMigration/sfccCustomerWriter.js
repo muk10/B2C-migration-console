@@ -48,12 +48,24 @@ function createCustomer(token, listId, profile, password) {
             result.error = 'Customer profile not found';
             return result;
         }
+        var customerSystem = require('*/cartridge/scripts/migration/customerMigration/customerSystemProfile');
+        var mapped = customerSystem.applyRuntimeMaps(profile);
+        customerSystem.mergeMappedSystem(profile, mapped);
+
         if (profile.email)        p.setEmail(profile.email);
         if (profile.first_name)   p.setFirstName(profile.first_name);
         if (profile.last_name)    p.setLastName(profile.last_name);
         if (profile.company_name) p.setCompanyName(profile.company_name);
         if (profile.salutation)   p.setSalutation(profile.salutation);
-        if (profile.phone)        p.setPhoneMobile(profile.phone);
+        if (profile.phone_mobile || profile.phone) {
+            p.setPhoneMobile(profile.phone_mobile || profile.phone);
+        }
+        if (profile.phone_home) {
+            try { p.setPhoneHome(profile.phone_home); } catch (phe) { /* ignore */ }
+        }
+        if (profile.phone_business) {
+            try { p.setPhoneBusiness(profile.phone_business); } catch (pbe) { /* ignore */ }
+        }
         // Restricted/validated fields can throw (permission or invalid-value errors) — must not block customer creation.
         if (profile.second_name) {
             try { p.setSecondName(profile.second_name); } catch (se) { /* ignore */ }
@@ -79,21 +91,11 @@ function createCustomer(token, listId, profile, password) {
             } catch (be) { /* ignore unparseable date */ }
         }
 
-        // Write all custom attributes from the transformer output.
-        // Keys prefixed with "c_" are custom attribute names (transformer convention).
-        // Visit-scoped renames (attrIdMap) are applied so Shopify/CT create-as-rename works.
-        var attrIdMapSession = require('*/cartridge/scripts/migration/core/attrIdMapSession');
-        var attrMap = attrIdMapSession.read('customer');
-        var customKeys = Object.keys(profile);
-        for (var ci = 0; ci < customKeys.length; ci++) {
-            var ck = customKeys[ci];
-            if (ck.length > 2 && ck.charAt(0) === 'c' && ck.charAt(1) === '_') {
-                var sfccAttrId = attrIdMapSession.resolve(ck.slice(2), attrMap);
-                var attrVal    = profile[ck];
-                if (attrVal !== null && attrVal !== undefined) {
-                    try { p.custom[sfccAttrId] = attrVal; } catch (ce) { /* attr not defined in SFCC yet */ }
-                }
-            }
+        var mi;
+        for (mi = 0; mi < (mapped.custom || []).length; mi++) {
+            var ca = mapped.custom[mi];
+            if (!ca || !ca.id || ca.value === '' || ca.value == null) continue;
+            try { p.custom[ca.id] = ca.value; } catch (ce) { /* attr not defined in SFCC yet */ }
         }
 
         result.customerNo = String(p.customerNo);

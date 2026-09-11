@@ -1,6 +1,7 @@
 'use strict';
 
 var transformer = require('*/cartridge/scripts/migration/customerMigration/customerTransformer');
+var customerSystem = require('*/cartridge/scripts/migration/customerMigration/customerSystemProfile');
 
 function xmlEsc(val) {
     if (val === null || val === undefined) return '';
@@ -12,24 +13,100 @@ function xmlEsc(val) {
         .replace(/'/g,  '&apos;');
 }
 
+function optEl(indent, tag, val, maxLen) {
+    if (val === null || val === undefined || val === '') return '';
+    var s = String(val);
+    if (maxLen && s.length > maxLen) s = s.substring(0, maxLen);
+    return indent + '<' + tag + '>' + xmlEsc(s) + '</' + tag + '>\n';
+}
+
+/** customer.xsd birthday is xsd:date (YYYY-MM-DD). */
+function toXsdDate(val) {
+    if (!val) return '';
+    var s = String(val);
+    var m = s.match(/^(\d{4}-\d{2}-\d{2})/);
+    return m ? m[1] : '';
+}
+
 function buildAddressXml(addr) {
     var preferred = addr.preferred ? 'true' : 'false';
+    var i = '            ';
     var xml = '        <address address-id="' + xmlEsc(addr.address_id) + '" preferred="' + preferred + '">\n';
-    if (addr.title)        xml += '            <title>'        + xmlEsc(addr.title)        + '</title>\n';
-    if (addr.salutation)   xml += '            <salutation>'   + xmlEsc(addr.salutation)   + '</salutation>\n';
-    if (addr.first_name)   xml += '            <first-name>'   + xmlEsc(addr.first_name)   + '</first-name>\n';
-    if (addr.last_name)    xml += '            <last-name>'    + xmlEsc(addr.last_name)    + '</last-name>\n';
-    if (addr.company_name) xml += '            <company-name>' + xmlEsc(addr.company_name) + '</company-name>\n';
-    if (addr.address1)     xml += '            <address1>'     + xmlEsc(addr.address1)     + '</address1>\n';
-    if (addr.address2)     xml += '            <address2>'     + xmlEsc(addr.address2)     + '</address2>\n';
-    if (addr.city)         xml += '            <city>'         + xmlEsc(addr.city)         + '</city>\n';
-    if (addr.postal_code)  xml += '            <postal-code>'  + xmlEsc(addr.postal_code)  + '</postal-code>\n';
-    if (addr.post_box)     xml += '            <post-box>'     + xmlEsc(addr.post_box)     + '</post-box>\n';
-    if (addr.state_code)   xml += '            <state-code>'   + xmlEsc(addr.state_code)   + '</state-code>\n';
-    if (addr.country_code) xml += '            <country-code>' + xmlEsc(addr.country_code) + '</country-code>\n';
-    if (addr.phone)        xml += '            <phone>'        + xmlEsc(addr.phone)        + '</phone>\n';
-    if (addr.suite)        xml += '            <suite>'        + xmlEsc(addr.suite)        + '</suite>\n';
+    // customer.xsd complexType.Address sequence
+    xml += optEl(i, 'salutation', addr.salutation);
+    xml += optEl(i, 'title', addr.title);
+    xml += optEl(i, 'first-name', addr.first_name);
+    xml += optEl(i, 'second-name', addr.second_name);
+    xml += optEl(i, 'last-name', addr.last_name);
+    xml += optEl(i, 'suffix', addr.suffix);
+    xml += optEl(i, 'company-name', addr.company_name);
+    xml += optEl(i, 'job-title', addr.job_title);
+    xml += optEl(i, 'address1', addr.address1);
+    xml += optEl(i, 'address2', addr.address2);
+    xml += optEl(i, 'suite', addr.suite, 32);
+    xml += optEl(i, 'postbox', addr.post_box || addr.postbox);
+    xml += optEl(i, 'city', addr.city);
+    xml += optEl(i, 'postal-code', addr.postal_code, 10);
+    xml += optEl(i, 'state-code', addr.state_code);
+    xml += optEl(i, 'country-code', addr.country_code, 2);
+    xml += optEl(i, 'phone', addr.phone, 32);
     xml += '        </address>\n';
+    return xml;
+}
+
+/**
+ * Profile XML in customer.xsd order. Runtime Check Attributes maps (session)
+ * send each c_<source> field to an OOTB profile element or a custom-attribute.
+ * @param {Object} profile
+ * @param {Object.<string, string>} [attrMap]
+ * @returns {string}
+ */
+function buildProfileXml(profile, attrMap) {
+    profile = profile || {};
+    var mapped = customerSystem.applyRuntimeMaps(profile, attrMap);
+    customerSystem.mergeMappedSystem(profile, mapped);
+
+    function sysOr(key) {
+        return profile[key];
+    }
+
+    var p = '            ';
+    var xml = '        <profile>\n';
+    xml += optEl(p, 'salutation', sysOr('salutation'));
+    xml += optEl(p, 'title', sysOr('title'));
+    xml += optEl(p, 'first-name', sysOr('first_name'));
+    xml += optEl(p, 'second-name', sysOr('second_name'));
+    xml += optEl(p, 'last-name', sysOr('last_name'));
+    xml += optEl(p, 'suffix', sysOr('suffix'));
+    xml += optEl(p, 'company-name', sysOr('company_name'));
+    xml += optEl(p, 'job-title', sysOr('job_title'));
+    xml += optEl(p, 'email', sysOr('email'));
+    xml += optEl(p, 'phone-home', sysOr('phone_home'), 32);
+    xml += optEl(p, 'phone-business', sysOr('phone_business'), 32);
+    xml += optEl(p, 'phone-mobile', sysOr('phone_mobile'), 32);
+    xml += optEl(p, 'fax', sysOr('fax'), 32);
+    xml += optEl(p, 'birthday', toXsdDate(sysOr('birthday')));
+    if (sysOr('gender') != null && sysOr('gender') !== '') {
+        xml += optEl(p, 'gender', sysOr('gender'));
+    }
+    xml += optEl(p, 'creation-date', customerSystem.formatImpexDateTime(sysOr('creation_date')));
+    xml += optEl(p, 'last-login-time', customerSystem.formatImpexDateTime(sysOr('last_login_time')));
+    xml += optEl(p, 'last-visit-time', customerSystem.formatImpexDateTime(sysOr('last_visit_time')));
+    xml += optEl(p, 'preferred-locale', sysOr('preferred_locale'), 10);
+
+    var customAttrXml = '';
+    var ci;
+    for (ci = 0; ci < (mapped.custom || []).length; ci++) {
+        var ca = mapped.custom[ci];
+        if (!ca || !ca.id || ca.value === '' || ca.value == null) continue;
+        if (customerSystem.isNonCustomSystemField(ca.id)) continue;
+        customAttrXml += '                <custom-attribute attribute-id="' + xmlEsc(ca.id) + '">'
+            + xmlEsc(customerSystem.formatCustomAttrValue(ca.value)) + '</custom-attribute>\n';
+    }
+    if (customAttrXml) {
+        xml += '            <custom-attributes>\n' + customAttrXml + '            </custom-attributes>\n';
+    }
+    xml += '        </profile>\n';
     return xml;
 }
 
@@ -51,35 +128,7 @@ function buildCustomerXml(ctpCustomer) {
     xml += '            <password encrypted="false">' + xmlEsc(password) + '</password>\n';
     xml += '        </credentials>\n';
 
-    xml += '        <profile>\n';
-    if (profile.title)            xml += '            <title>'            + xmlEsc(profile.title)            + '</title>\n';
-    if (profile.salutation)       xml += '            <salutation>'       + xmlEsc(profile.salutation)       + '</salutation>\n';
-    if (profile.first_name)       xml += '            <first-name>'       + xmlEsc(profile.first_name)       + '</first-name>\n';
-    if (profile.second_name)      xml += '            <second-name>'      + xmlEsc(profile.second_name)      + '</second-name>\n';
-    if (profile.last_name)        xml += '            <last-name>'        + xmlEsc(profile.last_name)        + '</last-name>\n';
-    if (profile.email)            xml += '            <email>'            + xmlEsc(profile.email)            + '</email>\n';
-    if (profile.company_name)     xml += '            <company-name>'     + xmlEsc(profile.company_name)     + '</company-name>\n';
-    if (profile.birthday)         xml += '            <birthday>'         + xmlEsc(profile.birthday)         + '</birthday>\n';
-    if (profile.preferred_locale) xml += '            <preferred-locale>' + xmlEsc(profile.preferred_locale) + '</preferred-locale>\n';
-    if (profile.tax_id)           xml += '            <tax-id>'           + xmlEsc(profile.tax_id)           + '</tax-id>\n';
-
-    // Dynamic CT custom-type fields, mapped by customerTransformer to "c_<sfccAttrId>" profile keys.
-    var customAttrXml = '';
-    var profileKeys    = Object.keys(profile);
-    for (var pk = 0; pk < profileKeys.length; pk++) {
-        var key = profileKeys[pk];
-        if (key.length > 2 && key.charAt(0) === 'c' && key.charAt(1) === '_') {
-            var attrVal = profile[key];
-            if (attrVal !== null && attrVal !== undefined) {
-                customAttrXml += '                <custom-attribute attribute-id="' + xmlEsc(key.slice(2)) + '">' + xmlEsc(attrVal) + '</custom-attribute>\n';
-            }
-        }
-    }
-    if (customAttrXml) {
-        xml += '            <custom-attributes>\n' + customAttrXml + '            </custom-attributes>\n';
-    }
-
-    xml += '        </profile>\n';
+    xml += buildProfileXml(profile);
 
     if (addresses.length > 0) {
         xml += '        <addresses>\n';
@@ -150,6 +199,7 @@ module.exports = {
     buildXml:              buildXml,
     buildCustomerFragment: buildCustomerFragment,
     buildAddressXml:       buildAddressXml,
+    buildProfileXml:       buildProfileXml,
     xmlEsc:                xmlEsc,
     XML_HEADER:            XML_HEADER,
     XML_FOOTER:            XML_FOOTER

@@ -1,5 +1,7 @@
 'use strict';
 
+var runtimeAttrMap = require('*/cartridge/scripts/migration/core/runtimeAttrMap');
+
 var NS_INVENTORY = 'http://www.demandware.com/xml/impex/inventory/2007-05-31';
 
 function xmlEsc(val) {
@@ -16,31 +18,30 @@ function xmlEsc(val) {
  * @param {Object} record
  * @returns {string}
  */
-function buildRecordXml(record) {
+function buildRecordXml(record, attrMap) {
+    var mapped = runtimeAttrMap.apply(record.customAttributes || {}, 'inventory', attrMap);
+    runtimeAttrMap.mergeIfEmpty(record, mapped.system, { allocation: 'allocation' });
+
     var productId = record.productId || record.sku;
     var xml = '            <record product-id="' + xmlEsc(productId) + '">\n';
     xml += '                <allocation>' + record.allocation + '</allocation>\n';
-    xml += '                <allocation-timestamp>' + xmlEsc(record.allocationTimestamp) + '</allocation-timestamp>\n';
+    if (record.allocationTimestamp) {
+        xml += '                <allocation-timestamp>' + xmlEsc(record.allocationTimestamp) + '</allocation-timestamp>\n';
+    }
     xml += '                <perpetual>' + (record.perpetual ? 'true' : 'false') + '</perpetual>\n';
     xml += '                <preorder-backorder-handling>' + xmlEsc(record.preorderBackorder || 'none')
         + '</preorder-backorder-handling>\n';
-    xml += '                <ats>' + record.ats + '</ats>\n';
-    xml += '                <on-order>' + (record.onOrder || 0) + '</on-order>\n';
-    xml += '                <turnover>' + (record.turnover || 0) + '</turnover>\n';
-
-    // Dynamic CT custom-type fields for this inventory record.
-    if (record.customAttributes) {
-        var keys = Object.keys(record.customAttributes);
-        if (keys.length) {
-            xml += '                <custom-attributes>\n';
-            for (var i = 0; i < keys.length; i++) {
-                xml += '                    <custom-attribute attribute-id="' + xmlEsc(keys[i]) + '">'
-                    + xmlEsc(record.customAttributes[keys[i]]) + '</custom-attribute>\n';
-            }
-            xml += '                </custom-attributes>\n';
+    // ats / on-order / turnover are export-only (inventory.xsd); do not emit on import.
+    if (mapped.custom && mapped.custom.length) {
+        xml += '                <custom-attributes>\n';
+        for (var i = 0; i < mapped.custom.length; i++) {
+            var ca = mapped.custom[i];
+            if (!ca || !ca.id || ca.value === '' || ca.value == null) continue;
+            xml += '                    <custom-attribute attribute-id="' + xmlEsc(ca.id) + '">'
+                + xmlEsc(runtimeAttrMap.formatCustomAttrValue(ca.value)) + '</custom-attribute>\n';
         }
+        xml += '                </custom-attributes>\n';
     }
-
     xml += '            </record>\n';
     return xml;
 }

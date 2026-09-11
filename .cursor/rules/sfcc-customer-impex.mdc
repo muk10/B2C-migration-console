@@ -1,0 +1,37 @@
+---
+description: SFCC customer IMPEX XML must follow customer.xsd element order
+globs: commerce-rc-b2c-migration-console-app/cartridges/bm_cartridges/bm_accelerator/cartridge/scripts/migration/customerMigration/**/*.{js,isml}
+alwaysApply: false
+---
+
+# Customer IMPEX (customer.xsd)
+
+Before changing customer XML builders or transformers, **read** `.cursor/references/sfcc-xsd/customer.xsd`. Sequences are ordered. Putting a valid element in the wrong place fails import (`cvc-complex-type.2.4.a`).
+
+Skip empty optional elements; do not invent tags that are not in the XSD (`post-box`, `tax-id` as profile children, etc.).
+
+## Customer
+
+`credentials` → `profile` → `external-profiles` → `addresses` → `customer-groups` → `note` → `global-party-id`
+
+## Profile (`complexType.Profile`)
+
+`salutation` → `title` → `first-name` → `second-name` → `last-name` → `suffix` → **`company-name`** → `job-title` → **`email`** → `phone-home` → `phone-business` → `phone-mobile` → `fax` → `birthday` (`xsd:date`) → `gender` → `creation-date` → `last-login-time` → `last-visit-time` → `preferred-locale` (max 10) → `customer-payment-profiles` → `custom-attributes`
+
+`company-name` is a **profile** element and must appear **before** `email`. Profile system fields with no XSD tag (`taxID`, `taxIDType`, `emailVerified`, `UUID`, …) must **not** be written as `<custom-attribute>` — import then logs `Object attribute 'taxID' is undefined`. Live Script API (`setTaxID`) can still set them.
+
+**Runtime maps** (Check Attributes session `attrIdMap_customer`): XML generation applies source → SFCC id at write time. If the target is OOTB (`sfccSystem.Customer`), emit the profile element (`phoneMobile` → `<phone-mobile>`). If the target is custom, emit `<custom-attribute attribute-id="{mapped id}">`. Never emit OOTB ids as custom-attributes.
+
+**Never** emit `sfccSystem.Customer` ids as `<custom-attribute>` (`phoneMobile` → `<phone-mobile>`, not `attribute-id="phoneMobile"`; `taxID` has no XSD tag — omit it). Import then logs `Object attribute '…' is undefined`.
+
+Custom `datetime` values must be `yyyy-MM-dd'T'HH:mm:ss.SSS+0000`. A trailing `Z` fails (`Invalid value '…Z' for attribute … of type 'datetime'`). `birthday` is `xsd:date` (`YYYY-MM-DD`).
+
+## Address (`complexType.Address`)
+
+`salutation` → `title` → `first-name` → `second-name` → `last-name` → `suffix` → `company-name` → `job-title` → `address1` → `address2` → `suite` → **`postbox`** (not `post-box`) → `city` → `postal-code` (max 10) → `state-code` → `country-code` (max 2) → `phone` (max 32) → `custom-attributes`
+
+## Credentials
+
+`login` → `password` → `enabled-flag` → `password-question` → `password-answer`
+
+Builders: `customerXmlBuilder.js` (CT + address helper used by Shopify/BC). Tests: `test/unit/bm_accelerator/customerMigration/customerXmlBuilder.js`.

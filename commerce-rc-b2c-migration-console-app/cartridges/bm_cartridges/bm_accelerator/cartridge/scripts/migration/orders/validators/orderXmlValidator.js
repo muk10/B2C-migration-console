@@ -25,6 +25,11 @@ function validateOrderXml(xml) {
         if (customerBlock.indexOf('<billing-address>') < 0) {
             errors.push('billing-address must be nested inside customer');
         }
+        if (customerBlock.indexOf('<guest>') < 0) {
+            errors.push('customer guest flag is required (order.xsd / version 19.2+)');
+        } else if (customerBlock.indexOf('<guest>') > customerBlock.indexOf('<customer-no>')) {
+            errors.push('guest must appear before customer-no');
+        }
     }
     if (/<order[^>]*>[\s\S]*<shipping-address>/.test(content)
         && content.indexOf('<shipment') >= 0) {

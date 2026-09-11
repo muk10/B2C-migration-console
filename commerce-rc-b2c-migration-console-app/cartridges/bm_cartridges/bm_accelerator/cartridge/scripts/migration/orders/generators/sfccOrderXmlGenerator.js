@@ -4,6 +4,7 @@ var localizedString     = require('*/cartridge/scripts/migration/orders/localize
 var orderShippingStatus = require('*/cartridge/scripts/migration/orders/orderShippingStatus');
 var orderTotals         = require('*/cartridge/scripts/migration/orders/orderTotalsCalculator');
 var orderXmlValidator   = require('*/cartridge/scripts/migration/orders/validators/orderXmlValidator');
+var runtimeAttrMap      = require('*/cartridge/scripts/migration/core/runtimeAttrMap');
 
 var XML_HEADER = '<?xml version="1.0" encoding="UTF-8"?>\n';
 var NS_ORDER   = orderXmlValidator.NS_ORDER;
@@ -159,8 +160,10 @@ function totalsBlockXml(totals, indent, shipmentLevel) {
  */
 function customerXml(order) {
     var customer = order.customer || {};
+    var isGuest = customer.guest === true || !customer.id;
     var parts = [
         '        <customer>',
+        '            <guest>' + (isGuest ? 'true' : 'false') + '</guest>',
         '            <customer-no>' + escapeXml(customer.id || customer.email) + '</customer-no>',
         '            <customer-name>' + escapeXml((customer.firstName + ' ' + customer.lastName).trim()) + '</customer-name>',
         '            <customer-email>' + escapeXml(customer.email) + '</customer-email>',
@@ -291,6 +294,20 @@ function prepareOrder(order) {
  */
 function generateOrderInnerXml(order) {
     var prepared = prepareOrder(order);
+    var mapped = runtimeAttrMap.applyEntries(prepared.customAttributes || [], 'order');
+    if (!prepared.customer) prepared.customer = {};
+    if ((!prepared.customer.email) && mapped.system.customerEmail) {
+        prepared.customer.email = mapped.system.customerEmail;
+    }
+    if ((!prepared.customer.id) && mapped.system.customerNo) {
+        prepared.customer.id = mapped.system.customerNo;
+    }
+    if ((!prepared.customerLocale) && mapped.system.customerLocaleID) {
+        prepared.customerLocale = mapped.system.customerLocaleID;
+    }
+    if ((!prepared.status) && mapped.system.status) {
+        prepared.status = mapped.system.status;
+    }
     var orderNo = escapeXml(prepared.orderNumber);
     var parts   = [
         '    <order order-no="' + orderNo + '">',
@@ -318,11 +335,26 @@ function generateOrderInnerXml(order) {
         parts.push(paymentsBlock);
     }
 
-    if (prepared.customAttributes && prepared.customAttributes.length) {
+    var externalNo = mapped.system.externalOrderNo;
+    var externalStatus = mapped.system.externalOrderStatus;
+    var externalText = mapped.system.externalOrderText;
+    if (externalNo) {
+        parts.push('        <external-order-no>' + escapeXml(externalNo) + '</external-order-no>');
+    }
+    if (externalStatus) {
+        parts.push('        <external-order-status>' + escapeXml(externalStatus) + '</external-order-status>');
+    }
+    if (externalText) {
+        parts.push('        <external-order-text>' + escapeXml(externalText) + '</external-order-text>');
+    }
+
+    if (mapped.custom && mapped.custom.length) {
         parts.push('        <custom-attributes>');
-        for (var c = 0; c < prepared.customAttributes.length; c++) {
-            var attr = prepared.customAttributes[c];
-            parts.push('            <custom-attribute attribute-id="' + escapeXml(attr.id) + '">' + escapeXml(attr.value) + '</custom-attribute>');
+        for (var c = 0; c < mapped.custom.length; c++) {
+            var attr = mapped.custom[c];
+            if (!attr || !attr.id || attr.value === '' || attr.value == null) continue;
+            parts.push('            <custom-attribute attribute-id="' + escapeXml(attr.id) + '">'
+                + escapeXml(runtimeAttrMap.formatCustomAttrValue(attr.value)) + '</custom-attribute>');
         }
         parts.push('        </custom-attributes>');
     }

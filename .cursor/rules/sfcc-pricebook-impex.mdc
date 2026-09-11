@@ -1,0 +1,36 @@
+---
+description: SFCC pricebook IMPEX XML must follow pricebook.xsd element order
+globs:
+  - commerce-rc-b2c-migration-console-app/cartridges/bm_cartridges/bm_accelerator/cartridge/scripts/migration/pricebookMigration/**/*.{js,isml}
+  - commerce-rc-b2c-migration-console-app/cartridges/bm_cartridges/bm_accelerator/cartridge/scripts/migration/productMigration/priceBookXmlBuilder.js
+  - test/unit/bm_accelerator/**/*pricebook*
+alwaysApply: false
+---
+
+# Pricebook IMPEX (pricebook.xsd)
+
+Before changing pricebook XML builders, **read** `.cursor/references/sfcc-xsd/pricebook.xsd`. Sequences are ordered. A valid element in the wrong place fails import (`cvc-complex-type.2.4.a`).
+
+Namespace: `http://www.demandware.com/xml/impex/pricebook/2006-10-31`. Root is `<pricebooks>` containing `<pricebook>` children. Skip empty optional elements. Do not invent tags.
+
+## Pricebook
+
+`header` (required) → `price-tables`
+
+## Header (`complexType.Header`)
+
+`pricebook-id` is required. `currency` is required (`[A-Z]{3}`).
+
+`currency` → `display-name` → `description` → `online-flag` → `online-from` → `online-to` → `parent` → `feed-based` → `custom-attributes`
+
+`display-name` and `description` are localized (`xml:lang`). Custom attributes belong on the **header**, not on a price-table.
+
+## Price table (`complexType.PriceTable`)
+
+`product-id` is required (max 100).
+
+`online-from` → `online-to` → (`amount` | `percentage`)* → `price-info`
+
+`<amount>` / `<percentage>` use attribute **`quantity`** (not `order-value` — that is shipping.xsd). No `custom-attributes` on price-table.
+
+Builders: `pricebookMigration/pricebookXmlBuilder.js`, `productMigration/priceBookXmlBuilder.js`.

@@ -114,8 +114,7 @@ function resolveAttrId(sourceId, attrIdMap) {
     return attrIdMapSession.resolve(sourceId, attrIdMap || readAttrIdMap());
 }
 
-function buildCustomAttributes(storeId, country, store, channel, attrIdMap) {
-    var map   = attrIdMap || readAttrIdMap();
+function buildCustomAttributes(storeId, country, store, channel) {
     var attrs = {};
 
     // Only CT Type / source custom fields — no hardcoded migration trace attrs
@@ -125,10 +124,10 @@ function buildCustomAttributes(storeId, country, store, channel, attrIdMap) {
         var i;
         for (i = 0; i < keys.length; i++) {
             var sourceKey = keys[i];
-            var sfccId    = resolveAttrId(sourceKey, map);
             var formatted = formatCustomFieldValue(fields[sourceKey]);
             if (formatted === '') continue;
-            attrs[sfccId] = formatted;
+            // Keep the source id; XML generation applies session maps at write time.
+            attrs[sourceKey] = formatted;
         }
     }
 
@@ -158,7 +157,6 @@ function transformStore(store, channelById, storeIdOverride, attrIdMap) {
     var channel      = fetcher.findLinkedChannel(store, channelById);
     var addr         = channel && channel.address ? channel.address : null;
     var geo          = channel ? parseGeoLocation(channel.geoLocation) : { latitude: '', longitude: '' };
-    var map          = attrIdMap || readAttrIdMap();
 
     return {
         storeId:                   storeId,
@@ -176,7 +174,7 @@ function transformStore(store, channelById, storeIdOverride, attrIdMap) {
         storeLocatorEnabled:       true,
         demandwarePosEnabled:      false,
         posEnabled:                false,
-        customAttributes:          buildCustomAttributes(storeId, country, store, channel, map)
+        customAttributes:          buildCustomAttributes(storeId, country, store, channel)
     };
 }
 

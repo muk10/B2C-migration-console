@@ -30,7 +30,9 @@ All of 3.a–3.c must be evaluated against the **curated source↔target mapping
 | `attrPreflightRunner.classifyFields` | Shared classifier for all modules |
 | `attrMapSuggestor` + OpenAI | Optional suggestions for **3.c create candidates only** |
 
-**Product XML:** curated aliases + session maps drive CT product transform/XML (not hardcoded key-over-id). SFCC system field **`ID`** is written as the catalog **`product-id` attribute** (alias `id → ID` stays curated; XML shape is `product-id="..."`). Other platforms/objects reuse `systemFieldResolver` later.
+**XML write time:** every IMPEX builder applies visit-scoped session maps (`attrIdMapSession` via `core/runtimeAttrMap.js`). If the target is OOTB (`sfccSystem[task]`), emit the system element — never `<custom-attribute attribute-id="{OOTB id}">`. If the target is custom, emit `<custom-attribute attribute-id="{mapped id}">`. Transformers keep source field ids on the payload; builders resolve.
+
+**Product XML:** curated aliases + session maps drive CT product transform/XML (not hardcoded key-over-id). SFCC system field **`ID`** is written as the catalog **`product-id` attribute** (alias `id → ID` stays curated; XML shape is `product-id="..."`).
 
 ## Lookup order (mandatory)
 

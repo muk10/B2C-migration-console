@@ -1,0 +1,36 @@
+---
+description: SFCC inventory IMPEX XML must follow inventory.xsd element order
+globs:
+  - commerce-rc-b2c-migration-console-app/cartridges/bm_cartridges/bm_accelerator/cartridge/scripts/migration/inventoryMigration/**/*.{js,isml}
+  - commerce-rc-b2c-migration-console-app/cartridges/bm_cartridges/bm_accelerator/cartridge/scripts/migration/productMigration/inventoryXmlBuilder.js
+  - test/unit/bm_accelerator/**/*inventory*
+alwaysApply: false
+---
+
+# Inventory IMPEX (inventory.xsd)
+
+Before changing inventory XML builders, **read** `.cursor/references/sfcc-xsd/inventory.xsd`. Sequences are ordered. A valid element in the wrong place fails import (`cvc-complex-type.2.4.a`).
+
+Namespace: `http://www.demandware.com/xml/impex/inventory/2007-05-31`. Root is `<inventory>` containing `<inventory-list>` children. Skip empty optional elements. Do not invent tags (`preorderable`, `backorderable` are **not** in this schema).
+
+## Inventory list
+
+`header` (required) → `records`
+
+## Header (`complexType.Header`)
+
+`list-id` is required.
+
+`default-instock` (required boolean) → `description` → `use-bundle-inventory-only` → `on-order` (header boolean: whether this list tracks on-order) → `custom-attributes`
+
+## Record (`complexType.InventoryRecord`)
+
+`product-id` is required (max 100).
+
+`allocation` (≥ 0) → `allocation-timestamp` (`xsd:dateTime`) → `perpetual` → `preorder-backorder-handling` (`none` | `preorder` | `backorder`) → `preorder-backorder-allocation` → `in-stock-date` (deprecated `xsd:date`) → **`in-stock-datetime`** (`xsd:dateTime`) → `ats` → `on-order` → `turnover` → `custom-attributes`
+
+Do **not** emit `ats`, `on-order`, or `turnover` on import — they are calculated / read-only. Prefer `in-stock-datetime` over deprecated `in-stock-date`.
+
+**Runtime maps** (Check Attributes `attrIdMap_inventory`): record custom fields are resolved at write time. `allocation` / `ATS` are OOTB (`ATS` is export-only — never emit). Other targets become `<custom-attribute>`.
+
+Builders: `inventoryMigration/inventoryXmlBuilder.js`, `productMigration/inventoryXmlBuilder.js`.

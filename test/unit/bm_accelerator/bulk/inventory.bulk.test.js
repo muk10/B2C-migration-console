@@ -47,6 +47,10 @@ describe('Bulk data migration — Inventory Lists', function () {
         var xml     = xmlBuilder.buildXml(records, 'test-list', 'bulk');
 
         expect(xml.xml).to.include('inventory-list');
+        expect(xml.xml).to.include('<default-instock>');
+        expect(xml.xml).to.not.include('<ats>');
+        expect(xml.xml).to.not.include('<turnover>');
+        expect(xml.xml).to.include('<preorder-backorder-handling>');
         expect(xml.built).to.equal(records.length);
     });
 });

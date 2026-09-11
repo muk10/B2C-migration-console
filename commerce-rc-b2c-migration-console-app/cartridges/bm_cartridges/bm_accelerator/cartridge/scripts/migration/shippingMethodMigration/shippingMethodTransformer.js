@@ -194,22 +194,19 @@ function transformShippingMethod(ctpMethod) {
     };
 
     if (ctpMethod.custom && ctpMethod.custom.fields) {
-        var attrIdMapSession = require('*/cartridge/scripts/migration/core/attrIdMapSession');
-        var attrMap = attrIdMapSession.read('shippingMethod');
         var fields = ctpMethod.custom.fields;
         var keys   = Object.keys(fields);
         for (var i = 0; i < keys.length; i++) {
             var fk = keys[i];
             var fv = fields[fk];
             if (fv === null || fv === undefined) continue;
-            var sfccFk = attrIdMapSession.resolve(fk, attrMap);
             if (isLocalizedObject(fv)) {
                 var entries = collectLocalizedEntries(fv, '');
                 if (entries.length) {
-                    method.localized_custom.push({ id: sfccFk, entries: entries });
+                    method.localized_custom.push({ id: fk, entries: entries });
                 }
             } else if (typeof fv !== 'object') {
-                method['c_' + sfccFk] = fv;
+                method['c_' + fk] = fv;
             }
         }
     }

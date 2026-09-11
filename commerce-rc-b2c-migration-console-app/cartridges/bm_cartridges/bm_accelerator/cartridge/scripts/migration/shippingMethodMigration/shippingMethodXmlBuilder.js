@@ -1,6 +1,7 @@
 'use strict';
 
 var transformer = require('*/cartridge/scripts/migration/shippingMethodMigration/shippingMethodTransformer');
+var runtimeAttrMap = require('*/cartridge/scripts/migration/core/runtimeAttrMap');
 
 var NS_SHIPPING = 'http://www.demandware.com/xml/impex/shipping/2007-03-31';
 
@@ -47,15 +48,34 @@ function buildLocalizedElementsXml(tagName, entries, indent) {
     return xml;
 }
 
-function buildCustomAttributesXml(method) {
-    var xml  = '';
-    var has  = false;
+function buildCustomAttributesXml(method, attrMap) {
+    var scalarFields = {};
+    var keys = Object.keys(method);
     var i;
     var j;
+    for (i = 0; i < keys.length; i++) {
+        var k = keys[i];
+        if (k.length > 2 && k.charAt(0) === 'c' && k.charAt(1) === '_') {
+            scalarFields[k] = method[k];
+        }
+    }
+    var mapped = runtimeAttrMap.apply(scalarFields, 'shippingMethod', attrMap);
+    runtimeAttrMap.mergeIfEmpty(method, mapped.system, {
+        taxClassID: 'tax_class_id',
+        displayName: 'display_name',
+        description: 'description'
+    });
 
+    var xml  = '';
+    var has  = false;
     var localized = method.localized_custom || [];
     for (i = 0; i < localized.length; i++) {
         var item = localized[i];
+        if (!item || !item.id) continue;
+        var classified = runtimeAttrMap.classifyId(item.id, 'shippingMethod', attrMap);
+        if (classified.systemId) continue;
+        var targetId = classified.customId || item.id;
+
         var xdefaultValue = null;
         for (j = 0; j < item.entries.length; j++) {
             if (item.entries[j] && item.entries[j].lang === 'x-default') {
@@ -73,24 +93,19 @@ function buildCustomAttributesXml(method) {
             }
 
             if (!has) { has = true; }
-            xml += '            <custom-attribute attribute-id="' + xmlEsc(item.id)
+            xml += '            <custom-attribute attribute-id="' + xmlEsc(targetId)
                 + '" xml:lang="' + xmlEsc(entry.lang) + '">'
                 + xmlEsc(entry.value) + '</custom-attribute>\n';
         }
     }
 
-    var keys = Object.keys(method);
-    for (i = 0; i < keys.length; i++) {
-        var k = keys[i];
-        if (k.length > 2 && k.charAt(0) === 'c' && k.charAt(1) === '_') {
-            var attrId = k.slice(2);
-            var val    = method[k];
-            if (val !== null && val !== undefined && val !== '') {
-                if (!has) { has = true; }
-                xml += '            <custom-attribute attribute-id="' + xmlEsc(attrId)
-                    + '" xml:lang="x-default">' + xmlEsc(val) + '</custom-attribute>\n';
-            }
-        }
+    for (i = 0; i < (mapped.custom || []).length; i++) {
+        var ca = mapped.custom[i];
+        if (!ca || !ca.id || ca.value === '' || ca.value == null) continue;
+        if (!has) { has = true; }
+        xml += '            <custom-attribute attribute-id="' + xmlEsc(ca.id)
+            + '" xml:lang="x-default">'
+            + xmlEsc(runtimeAttrMap.formatCustomAttrValue(ca.value)) + '</custom-attribute>\n';
     }
 
     if (!has) return '';

@@ -1,0 +1,31 @@
+---
+description: SFCC tax IMPEX XML must follow tax.xsd element order
+globs:
+  - commerce-rc-b2c-migration-console-app/cartridges/bm_cartridges/bm_accelerator/cartridge/scripts/migration/taxMigration/**/*.{js,isml}
+  - test/unit/bm_accelerator/**/*tax*
+alwaysApply: false
+---
+
+# Tax IMPEX (tax.xsd)
+
+Before changing tax XML builders, **read** `.cursor/references/sfcc-xsd/tax.xsd`. Sequences are ordered. A valid element in the wrong place fails import (`cvc-complex-type.2.4.a`).
+
+Namespace: `http://www.demandware.com/xml/impex/tax/2007-02-14`. Root is `<tax>`. Skip empty optional elements. Do not invent tags (no custom-attributes in this schema).
+
+## File
+
+`tax-classes` → `tax-jurisdictions` → `tax-rates`
+
+## Tax class
+
+`class-id` required. Optional `default`. Children: `display-name` → `description`. Names are **not** localized.
+
+## Tax jurisdiction
+
+`jurisdiction-id` required. Optional `default`. Children: `display-name` → `address-mappings` (`<address-mapping key1="…" key2="…"/>`).
+
+## Tax rate
+
+Empty element with decimal text: `<tax-rate jurisdiction-id="…" class-id="…">0.08</tax-rate>`. Both IDs required; they must match a class and jurisdiction in the same file.
+
+Builder: `taxXmlBuilder.js`.

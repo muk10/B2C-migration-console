@@ -6,6 +6,9 @@ var assert = require('chai').assert;
 var path = require('path');
 var proxyquire = require('proxyquire').noCallThru();
 
+var cartridgeLoader = require('../helpers/cartridgeLoader');
+cartridgeLoader.installCartridgeResolver();
+
 var ordersRoot = path.join(__dirname, '../../../../commerce-rc-b2c-migration-console-app/cartridges/bm_cartridges/bm_accelerator/cartridge/scripts/migration/orders');
 
 function load(modulePath) {
@@ -70,7 +73,8 @@ describe('sfccOrderXmlGenerator', function () {
             '*/cartridge/scripts/migration/orders/localizedString': load('localizedString'),
             '*/cartridge/scripts/migration/orders/orderShippingStatus': load('orderShippingStatus'),
             '*/cartridge/scripts/migration/orders/orderTotalsCalculator': load('orderTotalsCalculator'),
-            '*/cartridge/scripts/migration/orders/validators/orderXmlValidator': load('validators/orderXmlValidator')
+            '*/cartridge/scripts/migration/orders/validators/orderXmlValidator': load('validators/orderXmlValidator'),
+            '*/cartridge/scripts/migration/core/runtimeAttrMap': require('*/cartridge/scripts/migration/core/runtimeAttrMap')
         });
     });
 
@@ -84,7 +88,9 @@ describe('sfccOrderXmlGenerator', function () {
         assert.include(xml, 'xmlns="http://www.demandware.com/xml/impex/order/2006-10-31"');
         assert.ok(xml.indexOf('order-no="1001"') > 0);
         assert.ok(xml.indexOf('<currency>USD</currency>') > 0);
+        assert.ok(xml.indexOf('<guest>false</guest>') > 0);
         assert.ok(xml.indexOf('<customer-email>user@example.com</customer-email>') > 0);
+        assert.ok(xml.indexOf('<guest>false</guest>') < xml.indexOf('<customer-no>'));
         assert.ok(xml.indexOf('Product &amp; Co') > 0);
         assert.ok(xml.indexOf('<payment-status>PAID</payment-status>') > 0);
         assert.ok(xml.indexOf('<customer-locale>en_US</customer-locale>') > 0);

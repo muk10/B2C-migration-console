@@ -1,5 +1,7 @@
 'use strict';
 
+var customerSystem = require('*/cartridge/scripts/migration/customerMigration/customerSystemProfile');
+
 /**
  * Transform a CT address into an SFCC address payload.
  * CT: streetName → SFCC address1
@@ -105,8 +107,16 @@ function transformCustomer(ctpCustomer) {
         for (var i = 0; i < keys.length; i++) {
             var val = fields[keys[i]];
             if (val !== null && val !== undefined) {
-                var sfccAttrId = attrIdMapSession.resolve(keys[i], attrMap);
-                profile['c_' + sfccAttrId] = resolveCustomFieldValue(val, ctpCustomer.locale);
+                // Keep the source field id on c_* so XML generation can apply
+                // visit-scoped maps (OOTB or custom) at write time.
+                var sourceId = keys[i];
+                var targetId = attrIdMapSession.resolve(sourceId, attrMap);
+                var destKey = customerSystem.profileKey(targetId);
+                var resolved = resolveCustomFieldValue(val, ctpCustomer.locale);
+                profile['c_' + sourceId] = resolved;
+                if (destKey && (profile[destKey] == null || profile[destKey] === '')) {
+                    profile[destKey] = resolved;
+                }
             }
         }
     }

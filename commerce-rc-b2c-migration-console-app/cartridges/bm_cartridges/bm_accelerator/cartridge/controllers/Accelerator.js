@@ -1472,12 +1472,13 @@ exports.CustomerMigrationCount.public = true;
 
 /**
  * Migrate one batch of customer profiles from CT to SFCC.
- * POST: offset=<n>&listId=<sfcc-customer-list-id>
+ * POST: offset=<n>&listId=<sfcc-customer-list-id>&lastId=<ctp-uuid>
  * Response includes mappings[] for the caller to drive phase 2 (address migration).
  */
 exports.MigrateCustomerBatch = function () {
     var offset = parseInt(getParam('offset') || '0', 10);
     var listId = getParam('listId');
+    var lastId = getParam('lastId') || '';
 
     if (!listId) {
         jsonResponse({ ok: false, error: 'listId parameter is required' });
@@ -1501,7 +1502,7 @@ exports.MigrateCustomerBatch = function () {
     }
     try {
         var custRunner = require('*/cartridge/scripts/migration/customerMigration/customerMigrationRunner');
-        jsonResponse(custRunner.runProfileBatch(offset, listId));
+        jsonResponse(custRunner.runProfileBatch(offset, listId, lastId));
     } catch (e) {
         jsonResponse({ ok: false, error: e.message || String(e) });
     }
@@ -1541,8 +1542,8 @@ exports.MigrateCustomerAddresses = function () {
 exports.MigrateCustomerAddresses.public = true;
 
 /**
- * Full Migration — fetch one batch of 500 CT customers, build SFCC import XML, upload via WebDAV.
- * POST: offset=<n>&listId=<sfcc-customer-list-id>
+ * Full Migration — one poll writes a few source pages into a 20k-customer XML part.
+ * POST: offset=<n>&listId=<sfcc-customer-list-id>  (offset 0 starts a new run)
  */
 exports.FullMigrationBuildBatch = function () {
     var offset = parseInt(getParam('offset') || '0', 10);

@@ -72,15 +72,13 @@ function mapCustomAttributes(ctOrder) {
     var attrs = [];
     var custom = ctOrder.custom;
     if (!custom || !custom.fields) return attrs;
-    var attrIdMapSession = require('*/cartridge/scripts/migration/core/attrIdMapSession');
-    var attrMap = attrIdMapSession.read('order');
     var fields = custom.fields;
     var keys = Object.keys(fields);
     for (var i = 0; i < keys.length; i++) {
         var key = keys[i];
         var val = fields[key];
         attrs.push({
-            id:    attrIdMapSession.resolve(key, attrMap),
+            id:    key,
             value: typeof val === 'object' ? localizedString(val, '') : String(val)
         });
     }

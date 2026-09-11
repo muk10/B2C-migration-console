@@ -31,8 +31,8 @@ function buildXml(inventoryEntries, listId) {
         rows += '            <record product-id="' + xmlEsc(entry.sku) + '">\n';
         rows += '                <allocation>' + qty + '</allocation>\n';
         rows += '                <perpetual>false</perpetual>\n';
-        rows += '                <preorderable>' + (preorder ? 'true' : 'false') + '</preorderable>\n';
-        rows += '                <backorderable>false</backorderable>\n';
+        rows += '                <preorder-backorder-handling>'
+            + (preorder ? 'preorder' : 'none') + '</preorder-backorder-handling>\n';
         rows += '            </record>\n';
         built++;
     }
@@ -41,7 +41,7 @@ function buildXml(inventoryEntries, listId) {
         + '<inventory xmlns="http://www.demandware.com/xml/impex/inventory/2007-05-31">\n'
         + '    <inventory-list>\n'
         + '        <header list-id="' + xmlEsc(lid) + '">\n'
-        + '            <default-in-stock>true</default-in-stock>\n'
+        + '            <default-instock>true</default-instock>\n'
         + '        </header>\n'
         + '        <records>\n'
         + rows

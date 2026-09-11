@@ -1,0 +1,41 @@
+---
+description: SFCC shipping IMPEX XML must follow shipping.xsd element order
+globs:
+  - commerce-rc-b2c-migration-console-app/cartridges/bm_cartridges/bm_accelerator/cartridge/scripts/migration/shippingMethodMigration/**/*.{js,isml}
+  - test/unit/bm_accelerator/**/*shipping*
+alwaysApply: false
+---
+
+# Shipping IMPEX (shipping.xsd)
+
+Before changing shipping-method XML builders, **read** `.cursor/references/sfcc-xsd/shipping.xsd`. Sequences are ordered. A valid element in the wrong place fails import (`cvc-complex-type.2.4.a`).
+
+Namespace: `http://www.demandware.com/xml/impex/shipping/2007-03-31` (note **2007**, not 2006). Root is `<shipping>` containing `<shipping-method>` children. Skip empty optional elements. Do not invent tags.
+
+## Shipping method (`ShippingMethod`)
+
+`method-id` is required. Optional `default` boolean.
+
+`display-name` → `description` → `online-flag` → `base-method` → `external-shipping-method` (max **28**) → `tax-class-id` → `price-table` → `product-cost-groups` → `excluded-products` → `excluded-addresses` → **`custom-attributes`** → **`currency`** → `customer-groups`
+
+`currency` comes **after** `custom-attributes`, not before. Do not move it earlier.
+
+`display-name` and `description` are `LocalizedString` (`xml:lang`). Custom attributes may also take `xml:lang`.
+
+## Price table
+
+Choice of `<amount order-value="…">` and/or `<percentage order-value="…">` (unbounded). Amounts are `xsd:decimal` ≥ 0.
+
+## Product / address exclusions
+
+`excluded-products` / product-cost-group `products`: `included-products` (required) → optional `excluded-products`, each wrapping `condition-group` filters (`brand-condition`, `product-id-condition`, `category-condition`, …). Category filters require `catalog-id`.
+
+`excluded-addresses`: `included-addresses` (required) → optional `excluded-addresses`. Condition groups require `match-mode` (`all` | `any`).
+
+## Product cost groups
+
+`product-cost-group` → `products` → optional `cost-per-item` (`fixed-price` | `surcharge`).
+
+**Runtime maps** (Check Attributes `attrIdMap_shippingMethod`): XML generation applies source → SFCC id at write time. OOTB targets (`taxClassID`, `displayName`, …) become shipping-method elements; custom targets become `<custom-attribute>`. Never emit OOTB ids as custom-attributes.
+
+Builder: `shippingMethodXmlBuilder.js`.

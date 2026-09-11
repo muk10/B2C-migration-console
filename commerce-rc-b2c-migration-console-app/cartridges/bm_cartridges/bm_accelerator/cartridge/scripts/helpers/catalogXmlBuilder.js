@@ -1,5 +1,7 @@
 'use strict';
 
+var runtimeAttrMap = require('*/cartridge/scripts/migration/core/runtimeAttrMap');
+
 function escapeXml(val) {
     if (!val) return '';
     return String(val)
@@ -120,15 +122,18 @@ function buildLocalizedElement(tagName, localizedObj) {
 //     return xml;
 // }
 function buildCategoryXml(sfccCategory) {
+    var mapped = runtimeAttrMap.apply(sfccCategory.customAttributes || {}, 'category');
+    if ((!sfccCategory.template) && mapped.system.template) {
+        sfccCategory.template = mapped.system.template;
+    }
+
     var xml = '    <category category-id="' + escapeXml(sfccCategory.id) + '">\n';
 
-    // 1. display-name
+    // catalog.xsd Category: display-name → description → online-flag… → parent → position → … → page-attributes
     xml += buildLocalizedElement('display-name', sfccCategory.name);
-
-    // 2. description
     xml += buildLocalizedElement('description', sfccCategory.description);
 
-    // 3. parent — always write, including 'root' so SFCC places top-level cats correctly
+    // parent — skip unused online-flag/from/to; always write, including 'root'
     if (sfccCategory.parentId) {
         xml += '        <parent>' + escapeXml(sfccCategory.parentId) + '</parent>\n';
     }
@@ -140,6 +145,10 @@ function buildCategoryXml(sfccCategory) {
         xml += '        <position>' + escapeXml(sfccCategory.positionRaw) + '</position>\n';
     } else if (sfccCategory.position !== undefined && sfccCategory.position !== null) {
         xml += '        <position>' + sfccCategory.position + '</position>\n';
+    }
+
+    if (sfccCategory.template) {
+        xml += '        <template>' + escapeXml(sfccCategory.template) + '</template>\n';
     }
 
     // 5. page-attributes
@@ -217,24 +226,12 @@ function buildCategoryXml(sfccCategory) {
         xml += '        </page-attributes>\n';
     }
 
-    // 6. custom-attributes — keys are dynamic (may be renamed by user in Step 1)
-    var ca     = sfccCategory.customAttributes || {};
-    var caKeys = Object.keys(ca);
-    if (caKeys.length > 0) {
+    if (mapped.custom && mapped.custom.length) {
         xml += '        <custom-attributes>\n';
-        caKeys.forEach(function (key) {
-            var val = ca[key];
-            if (val === null || val === undefined) return;
-            var valStr;
-            if (typeof val === 'boolean') {
-                valStr = val ? 'true' : 'false';
-            } else if (typeof val === 'number') {
-                valStr = String(val);
-            } else {
-                valStr = escapeXml(String(val));
-            }
-            xml += '            <custom-attribute attribute-id="' + escapeXml(key) + '">'
-                + valStr + '</custom-attribute>\n';
+        mapped.custom.forEach(function (ca) {
+            if (!ca || !ca.id || ca.value === '' || ca.value == null) return;
+            xml += '            <custom-attribute attribute-id="' + escapeXml(ca.id) + '">'
+                + escapeXml(runtimeAttrMap.formatCustomAttrValue(ca.value)) + '</custom-attribute>\n';
         });
         xml += '        </custom-attributes>\n';
     }

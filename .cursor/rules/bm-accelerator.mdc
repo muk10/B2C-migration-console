@@ -38,3 +38,6 @@ npm run upload:accelerator
 
 ## Check Attributes
 Follow `.cursor/rules/check-attributes.mdc` (rules **3.a / 3.b / 3.c**): map to SFCC system attrs when aliased or identity-matched; otherwise offer create. Mapping lives in `nativeFieldMap.json` (`sfccSystem` + `aliases` + `skipped`).
+
+## SFCC IMPEX schemas
+XSDs live in `.cursor/references/sfcc-xsd/`. Glob-scoped rules apply when editing that module’s XML (`sfcc-customer-impex.mdc`, `sfcc-catalog-impex.mdc` for product + catalog, `sfcc-order-impex.mdc`, `sfcc-shipping-impex.mdc`, `sfcc-inventory-impex.mdc`, `sfcc-pricebook-impex.mdc`, `sfcc-store-impex.mdc`, `sfcc-tax-impex.mdc`). Read the XSD before changing element order.

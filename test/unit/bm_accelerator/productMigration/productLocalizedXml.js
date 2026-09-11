@@ -358,6 +358,22 @@ describe('product localized XML', function () {
         assert.match(xml, /display-name xml:lang="x-default">Bulk Seed Product 79/);
     });
 
+    it('emits page-attributes in catalog.xsd order', function () {
+        var xmlBuilder = loadXmlBuilder();
+        var result = xmlBuilder.buildProductXml(sampleTransformed({
+            metaTitle: 'Title',
+            metaDescription: 'Desc',
+            metaKeywords: 'kw',
+            slug: 'my-slug'
+        }), []);
+        var page = result.productXml.match(/<page-attributes>[\s\S]*?<\/page-attributes>/);
+        assert.ok(page);
+        var block = page[0];
+        assert.ok(block.indexOf('page-title') < block.indexOf('page-description'));
+        assert.ok(block.indexOf('page-description') < block.indexOf('page-keywords'));
+        assert.ok(block.indexOf('page-keywords') < block.indexOf('page-url'));
+    });
+
     it('writes set-product members as UUID product-ids, not CT+nodash', function () {
         var xmlBuilder = loadXmlBuilder();
         var result = xmlBuilder.buildProductXml(sampleTransformed({

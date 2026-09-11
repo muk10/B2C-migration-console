@@ -1,0 +1,47 @@
+---
+description: SFCC catalog IMPEX XML must follow catalog.xsd element order (product + catalog)
+globs:
+  - commerce-rc-b2c-migration-console-app/cartridges/bm_cartridges/bm_accelerator/cartridge/scripts/migration/productMigration/**/*.{js,isml}
+  - commerce-rc-b2c-migration-console-app/cartridges/bm_cartridges/bm_accelerator/cartridge/scripts/catalog/**/*.{js,isml}
+  - commerce-rc-b2c-migration-console-app/cartridges/bm_cartridges/bm_accelerator/cartridge/scripts/helpers/catalogXmlBuilder.js
+  - test/unit/bm_accelerator/productMigration/**/*.js
+alwaysApply: false
+---
+
+# Catalog IMPEX (catalog.xsd)
+
+Product and catalog modules share one schema. Before changing product or category XML builders, **read** `.cursor/references/sfcc-xsd/catalog.xsd`. Sequences are ordered. A valid element in the wrong place fails import (`cvc-complex-type.2.4.a`).
+
+Namespace: `http://www.demandware.com/xml/impex/catalog/2006-10-31`. Skip empty optional elements. Do not invent tags. Prefer current elements over deprecated ones (`images` not `image`/`thumbnail`; `product-set-products` not `retail-set-products`; `category-assignment` + `classification-category` not `category-links` on product).
+
+## Catalog file
+
+`header` → `product-attribute-definitions` → `category` → `product` → `product-option` → `variation-attribute` → `category-assignment` → `recommendation`
+
+Root requires `catalog-id`.
+
+## Product (`complexType.Product`)
+
+`product-id` is required.
+
+`ean` → `upc` → `unit` → `unit-quantity` → `unit-measure` → `min-order-quantity` → `step-quantity` → `display-name` → `short-description` → `long-description` → (deprecated store-* flags) → `online-flag` / `online-from` / `online-to` → `available-flag` (deprecated) → `searchable-flag` → `searchable-if-unavailable-flag` → **`images`** → (deprecated `image` / `thumbnail`) → `template` → `tax-class-id` → `localized-tax-class-id` → `brand` → `manufacturer-name` → `manufacturer-sku` → `search-*` / `sitemap-*` → `page-attributes` → `custom-attributes` → `bundled-products` → (deprecated `retail-set-products`) → `product-set-products` → `options` → `variations` → `product-links` → (deprecated `category-links`) → `classification-category` → `pinterest-enabled-flag` → `facebook-enabled-flag` → `product-detail-page-meta-tag-rules` → `store-attributes`
+
+`variations`: `attributes` → `variants` → `variation-groups`. Prefer `variation-attribute` / `shared-variation-attribute` over deprecated `attribute`.
+
+## Category (`complexType.Category`)
+
+`display-name` → `description` → `online-flag` / `online-from` / `online-to` → `variation-groups-display-mode` → `parent` → `position` → `thumbnail` → `image` → `template` → `search-*` / `sitemap-*` → `page-attributes` → `custom-attributes` → `category-links` → `attribute-groups` → `refinement-definitions` → meta-tag rules → `product-specification-rule`
+
+## Localized + custom attributes
+
+`sharedType.LocalizedString` / `LocalizedText` take `xml:lang`. System tags (`display-name`, descriptions, page attrs) always emit lang (including `x-default`).
+
+`custom-attribute` must include `xml:lang` when the SFCC Product/Category attr is localizable. Product custom attrs are `sharedType.SiteSpecificCustomAttributes` (`site-id` allowed). Variation `value` is the key; locales go on `display-value`.
+
+## Page-attributes
+
+`page-title` → `page-description` → `page-keywords` → `page-url`
+
+**Runtime maps** (Check Attributes `attrIdMap_product` / `attrIdMap_category`): XML generation applies source → SFCC id at write time. OOTB targets become catalog/product system elements; custom targets become `<custom-attribute>`. Never emit OOTB ids as custom-attributes.
+
+Builders: `productXmlBuilder.js`, `helpers/catalogXmlBuilder.js`. Catalog fetch/transform: `scripts/catalog/`.

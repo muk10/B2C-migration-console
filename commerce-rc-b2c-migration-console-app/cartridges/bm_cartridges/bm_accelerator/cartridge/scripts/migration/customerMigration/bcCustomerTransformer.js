@@ -50,7 +50,10 @@ function transformCustomer(bcCustomer) {
 
     // Store BigCommerce identifiers/fields as custom attributes for traceability
     profile.c_bc_customer_id = String(bcCustomer.id);
-    if (bcCustomer.phone) profile.phone = bcCustomer.phone;
+    if (bcCustomer.phone) {
+        profile.phone = bcCustomer.phone;
+        profile.phone_mobile = bcCustomer.phone;
+    }
     if (bcCustomer.company) profile.c_bc_company = bcCustomer.company;
     if (bcCustomer.notes)   profile.c_bc_notes   = bcCustomer.notes;
     if (bcCustomer.customer_group_id != null) {

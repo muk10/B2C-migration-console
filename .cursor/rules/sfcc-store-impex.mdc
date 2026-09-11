@@ -1,0 +1,29 @@
+---
+description: SFCC store IMPEX XML must follow store.xsd element order
+globs:
+  - commerce-rc-b2c-migration-console-app/cartridges/bm_cartridges/bm_accelerator/cartridge/scripts/migration/storeMigration/**/*.{js,isml}
+  - test/unit/bm_accelerator/**/*store*
+alwaysApply: false
+---
+
+# Store IMPEX (store.xsd)
+
+Before changing store XML builders, **read** `.cursor/references/sfcc-xsd/store.xsd`. Sequences are ordered. A valid element in the wrong place fails import (`cvc-complex-type.2.4.a`).
+
+Namespace: `http://www.demandware.com/xml/impex/store/2007-04-30`. Root is `<stores>`: all `<store>` first, then optional `<store-group>`. Skip empty optional elements. Do not invent tags.
+
+## Store (`complexType.Store`)
+
+`store-id` is required.
+
+`name` (not localized) → `address1` → `address2` → `city` → `postal-code` → `state-code` → `country-code` (exactly 2 chars) → `email` → `phone` → `fax` → `store-events` → `store-hours` → `image` → `latitude` (−90..90) → `longitude` (−180..180) → `inventory-list-id` → `store-locator-enabled-flag` → (deprecated `demandware-pos-enabled-flag`) → **`pos-enabled-flag`** → `custom-attributes`
+
+`store-events` and `store-hours` are `LocalizedText` (`xml:lang`). Prefer `pos-enabled-flag` over deprecated `demandware-pos-enabled-flag`.
+
+## Store group (beta)
+
+`store-group-id` required. `name` → `stores` (`<store store-id="…"/>`) → `price-books` (`<price-book price-book-id="…"/>`) → `custom-attributes`. Ignored on import if DemandwareStore is not enabled.
+
+**Runtime maps** (Check Attributes `attrIdMap_store`): XML generation applies source → SFCC id at write time. OOTB targets (`phone`, `email`, …) become store elements; custom targets become `<custom-attribute>`. Never emit OOTB ids as custom-attributes.
+
+Builder: `storeXmlBuilder.js`.

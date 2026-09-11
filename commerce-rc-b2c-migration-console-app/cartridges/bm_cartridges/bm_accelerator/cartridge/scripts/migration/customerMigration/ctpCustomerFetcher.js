@@ -28,6 +28,49 @@ function getToken() {
     return res.data.access_token;
 }
 
+function ctErrorDetail(res) {
+    if (res && res.data && res.data.message) return ': ' + res.data.message;
+    if (res && res.text) return ': ' + String(res.text).substring(0, 240);
+    return '';
+}
+
+/**
+ * CT Query API rejects offset > 10000. Page with sort=id asc and id > lastId instead.
+ * @param {string} lastId
+ * @returns {string}
+ */
+function escapePredicateValue(lastId) {
+    return String(lastId || '').replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+}
+
+/**
+ * @param {number} limit
+ * @param {string} [lastId] - exclusive lower bound (previous page's last UUID)
+ * @param {boolean} [withTotal]
+ * @returns {string} query string including leading ?
+ */
+function buildKeysetQuery(limit, lastId, withTotal) {
+    var lim = parseInt(limit, 10) || 500;
+    if (lim < 1) lim = 1;
+    if (lim > 500) lim = 500;
+    var qs = '?limit=' + lim + '&sort=id+asc';
+    if (withTotal) qs += '&withTotal=true';
+    if (lastId) {
+        qs += '&where=' + encodeURIComponent('id > "' + escapePredicateValue(lastId) + '"');
+    }
+    return qs;
+}
+
+/**
+ * @param {Array} results
+ * @returns {string}
+ */
+function lastIdFromResults(results) {
+    if (!results || !results.length) return '';
+    var last = results[results.length - 1];
+    return last && last.id ? String(last.id) : '';
+}
+
 /**
  * Return total number of customers in the CT project.
  * @returns {number} total customer count
@@ -36,37 +79,59 @@ function getCount() {
     var c     = cfg.ctp;
     var token = getToken();
     var res   = http.get(
-        c.apiUrl + '/' + c.projectKey + '/customers?limit=1',
+        c.apiUrl + '/' + c.projectKey + '/customers?limit=1&withTotal=true',
         { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' }
     );
     if (res.status !== 200) {
-        throw new Error('CT customer count failed (' + res.status + ')');
+        throw new Error('CT customer count failed (' + res.status + ')' + ctErrorDetail(res));
     }
     return res.data.total || 0;
 }
 
 /**
- * Fetch one page of customers from CT.
- * @param {number} offset - pagination offset
- * @param {number} limit  - page size (max 500)
- * @returns {{ results: Array, total: number }}
+ * Fetch one page of customers using keyset pagination (never uses offset).
+ * @param {Object} [opts]
+ * @param {number} [opts.limit] - page size (max 500)
+ * @param {string} [opts.lastId] - exclusive cursor from the previous page
+ * @param {boolean} [opts.withTotal] - default true on the first page only
+ * @returns {{ results: Array, total: number, nextCursor: string, hasMore: boolean }}
  */
-function fetchBatch(offset, limit) {
-    var c   = cfg.ctp;
-    var tok = getToken();
-    var qs  = '?limit=' + (limit || 5) + '&offset=' + (offset || 0) + '&sort=id+asc&withTotal=true';
+function fetchPage(opts) {
+    opts = opts || {};
+    var lastId    = opts.lastId ? String(opts.lastId) : '';
+    var withTotal = opts.withTotal != null ? !!opts.withTotal : !lastId;
+    var c         = cfg.ctp;
+    var tok       = getToken();
+    var qs        = buildKeysetQuery(opts.limit, lastId, withTotal);
 
     var res = http.get(
         c.apiUrl + '/' + c.projectKey + '/customers' + qs,
         { Authorization: 'Bearer ' + tok, 'Content-Type': 'application/json' }
     );
     if (res.status !== 200) {
-        throw new Error('CT customers fetch failed (' + res.status + ')');
+        throw new Error('CT customers fetch failed (' + res.status + ')' + ctErrorDetail(res));
     }
+    var results = res.data.results || [];
+    var limit   = parseInt(opts.limit, 10) || 500;
+    var nextCursor = lastIdFromResults(results);
     return {
-        results: res.data.results || [],
-        total:   res.data.total   || 0
+        results:    results,
+        total:      res.data.total || 0,
+        nextCursor: nextCursor,
+        hasMore:    results.length >= limit
     };
+}
+
+/**
+ * @param {Object|number} optsOrLimit - fetchPage opts, or page size
+ * @param {string} [lastId]
+ * @returns {{ results: Array, total: number, nextCursor: string, hasMore: boolean }}
+ */
+function fetchBatch(optsOrLimit, lastId) {
+    if (optsOrLimit && typeof optsOrLimit === 'object') {
+        return fetchPage(optsOrLimit);
+    }
+    return fetchPage({ limit: optsOrLimit, lastId: lastId });
 }
 
 /**
@@ -102,9 +167,18 @@ function fetchById(ctpId) {
     );
     if (res.status === 404) return null;
     if (res.status !== 200) {
-        throw new Error('CT customer fetch failed (' + res.status + ') for id: ' + normalised);
+        throw new Error('CT customer fetch failed (' + res.status + ') for id: ' + normalised + ctErrorDetail(res));
     }
     return res.data;
 }
 
-module.exports = { getCount: getCount, fetchBatch: fetchBatch, fetchById: fetchById };
+module.exports = {
+    getCount:           getCount,
+    fetchPage:          fetchPage,
+    fetchBatch:         fetchBatch,
+    fetchById:          fetchById,
+    buildKeysetQuery:   buildKeysetQuery,
+    lastIdFromResults:  lastIdFromResults,
+    escapePredicateValue: escapePredicateValue,
+    normalizeUuid:      normalizeUuid
+};

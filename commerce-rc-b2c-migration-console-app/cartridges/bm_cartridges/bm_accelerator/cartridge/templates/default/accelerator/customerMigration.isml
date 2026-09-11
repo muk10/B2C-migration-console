@@ -312,13 +312,13 @@
 
             <div class="acc-info-box">
                 <strong>How Full Migration works:</strong><br/>
-                Phase 1 fetches customers from ${pdict.platformLabel} in batches, builds SFCC customer import XML,
-                and uploads each file to WebDAV at
-                <code>/Impex/${pdict.impexPath}/</code> (e.g. <code>customer-YYYYMMDD-v001.xml</code>).<br/>
+                Phase 1 fetches customers from ${pdict.platformLabel} in batches (keyset paging — no 10k offset cap),
+                writes SFCC customer import XML, and splits files every 20,000 customers
+                (<code>customer-YYYYMMDD-v00N-p0001.xml</code>, <code>-p0002.xml</code>, &hellip;).
+                Files land under <code>/Impex/${pdict.impexPath}/</code>. Project size is unlimited.<br/>
                 Phase 2 is a manual BM step: run <strong>Administration &rarr; Site Development &rarr; Import &amp; Export
-                &rarr; Import Customers</strong> and point it at the uploaded files.
-                Customers receive a random temporary password generated at migration time.
-                They must reset their password on first login.
+                &rarr; Import Customers</strong> and import every uploaded part.
+                Customers receive a random temporary password generated at migration time;
                 they must use <em>Forgot Password</em> to set their own.
             </div>
 
@@ -741,14 +741,15 @@
     var allMappings     = [];
     var partialRunning  = false;
 
-    function runProfiles(offset, total) {
+    function runProfiles(offset, total, lastId) {
         var listId = listIdEl.value.trim();
         var pct    = (total > 0) ? Math.round((offset / total) * 100) : 0;
         setPhase('acc', 'profiles', 'active', offset + ' / ' + (total || '?') + ' processed...', pct);
 
         post(
             PROFILE_URL,
-            'offset=' + offset + '&listId=' + encodeURIComponent(listId),
+            'offset=' + offset + '&listId=' + encodeURIComponent(listId)
+            + (lastId ? '&lastId=' + encodeURIComponent(lastId) : ''),
             function (data) {
                 if (!data.ok) {
                     setPhase('acc', 'profiles', 'error', data.error || 'Failed', 0);
@@ -780,7 +781,7 @@
                 if (!data.done) {
                     setPhase('acc', 'profiles', 'active',
                         data.nextOffset + ' / ' + data.total + ' processed...', newPct);
-                    runProfiles(data.nextOffset, data.total);
+                    runProfiles(data.nextOffset, data.total || total, data.nextLastId || '');
                 } else {
                     var state1  = (profilesFailed > 0 && profilesCreated === 0) ? 'error'
                                 : (profilesFailed > 0) ? 'warning' : 'done';
@@ -976,6 +977,7 @@
     var fullFailed     = 0;
     var fullBatches    = 0;
     var fullFileName   = '';
+    var fullFileCount  = 0;
     var fullRunning    = false;
     var fullFinished   = false;
 
@@ -987,7 +989,7 @@
         var listId = listIdEl.value.trim();
         var pct    = (total > 0) ? Math.round((offset / total) * 100) : 0;
         setPhase('full', 'build', 'active',
-            offset + ' / ' + (total || '?') + ' processed... (writing 1 file)', pct);
+            offset + ' / ' + (total || '?') + ' processed...', pct);
 
         post(
             FULL_BATCH_URL,
@@ -1002,36 +1004,45 @@
                 fullBuilt  += (data.built  || 0);
                 fullFailed += (data.failed || 0);
                 fullBatches++;
-                fullFileName = data.fileName || fullFileName;
+                fullFileName  = data.fileName || fullFileName;
+                fullFileCount = data.fileCount || data.expectedFiles || fullFileCount;
+                var expected  = data.expectedFiles || fullFileCount || 1;
+                var part      = data.filePart || 1;
+                var fileLabel = expected > 1
+                    ? (fullFileCount || expected) + ' file(s) (part ' + part + ' of ' + expected + ': ' + fullFileName + ')'
+                    : '1 file (' + fullFileName + ')';
 
-                fullOverallEl.textContent = '1 file (' + fullFileName + '), '
+                fullOverallEl.textContent = fileLabel + ', '
                     + fullBuilt + ' customer(s) built'
                     + (fullFailed ? ', ' + fullFailed + ' failed' : '');
 
                 if (!data.done) {
-                    runFullBatch(data.nextOffset, data.total);
+                    runFullBatch(data.nextOffset, data.total || total);
                 } else {
                     var buildState = (fullFailed > 0 && fullBuilt === 0) ? 'error'
                                    : (fullFailed > 0) ? 'warning' : 'done';
+                    var doneLabel = (data.fileCount || fullFileCount || 1) + ' file(s)'
+                        + (data.files ? ' (' + data.files + ')' : (fullFileName ? ' (' + fullFileName + ')' : ''));
                     setPhase('full', 'build', buildState,
-                        '1 file (' + fullFileName + '), ' + fullBuilt + ' customer(s) built'
+                        doneLabel + ', ' + fullBuilt + ' customer(s) built'
                         + (fullFailed ? ', ' + fullFailed + ' skipped due to errors' : ''),
                         100);
-                    finalizeFull(true);
+                    finalizeFull(true, data.fileCount || fullFileCount || 1);
                 }
             }
         );
     }
 
-    function finalizeFull(success) {
+    function finalizeFull(success, fileCount) {
         fullRunning              = false;
         fullStartBtn.disabled    = false;
         if (success) {
             fullFinished             = true;
             fullStartBtn.textContent = 'Finish';
             fullStatusBox.style.display = 'none';
+            var n = fileCount || fullFileCount || 1;
             setPhase('full', 'import', 'active',
-                'Run your import job in Business Manager to complete the migration.', null);
+                'Import all ' + n + ' customer XML file(s) in Business Manager to complete the migration.', null);
         } else {
             fullFinished             = false;
             fullStartBtn.textContent = 'Build Failed';
@@ -1060,7 +1071,7 @@
         fullStartBtn.textContent = 'Building...';
 
         fullRunning   = true;
-        fullBuilt     = 0; fullFailed = 0; fullBatches = 0; fullFileName = '';
+        fullBuilt     = 0; fullFailed = 0; fullBatches = 0; fullFileName = ''; fullFileCount = 0;
 
         fullStatusBox.style.display = 'none';
         fullOverallEl.textContent   = '';

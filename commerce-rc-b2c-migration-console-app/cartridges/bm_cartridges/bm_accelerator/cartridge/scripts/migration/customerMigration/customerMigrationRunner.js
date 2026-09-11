@@ -1,31 +1,44 @@
 'use strict';
 
+/* global session */
+
 var fetcher     = require('*/cartridge/scripts/migration/customerMigration/ctpCustomerFetcher');
 var transformer = require('*/cartridge/scripts/migration/customerMigration/customerTransformer');
 var writer      = require('*/cartridge/scripts/migration/customerMigration/sfccCustomerWriter');
+
+var SK_LIVE_LAST_ID = 'migCustLiveLastId';
+var SK_LIVE_TOTAL   = 'migCustLiveTotal';
 
 /**
  * Migrate one batch of customer profiles (no addresses — those run separately in phase 2).
  *
  * HTTP budget per call:
- *   1  getSFCCToken
- *   1  CT auth  (inside fetchBatch)
- *   1  CT GET /customers  (inside fetchBatch)
+ *   1  CT auth  (inside fetchPage)
+ *   1  CT GET /customers  (keyset, never offset)
  *   1  createCustomer (batch size capped at 1 — CustomerMgr.createCustomer quota is 2/request)
- *   ─────────────────
- *   4  total
  *
- * @param {number} offset - CT pagination offset
+ * @param {number} offset - processed count from the UI (0 resets the cursor)
  * @param {string} listId - SFCC customer list ID (e.g. "RefArch")
- * @returns {Object} { ok, total, nextOffset, created, skipped, failed, done, errors, mappings }
+ * @param {string} [lastId] - CT keyset cursor from the previous page
+ * @returns {Object} { ok, total, nextOffset, nextLastId, created, skipped, failed, done, errors, mappings }
  *   mappings: [{ ctpId, sfccNo, ctpAddresses, defaultShippingId }] — used by the address phase
  */
-function runProfileBatch(offset, listId) {
+function runProfileBatch(offset, listId, lastId) {
     if (!listId) return { ok: false, error: 'listId is required' };
 
-    var batch     = fetcher.fetchBatch(offset, 1);      // 1 customer per request — CustomerMgr.createCustomer() quota is 2/request
+    var cursor = '';
+    if (!offset) {
+        session.custom[SK_LIVE_LAST_ID] = '';
+        session.custom[SK_LIVE_TOTAL]   = '';
+        cursor = '';
+    } else {
+        cursor = lastId || session.custom[SK_LIVE_LAST_ID] || '';
+    }
+
+    var batch     = fetcher.fetchPage({ limit: 1, lastId: cursor, withTotal: !cursor });
     var customers = batch.results;
-    var total     = batch.total;
+    var total     = batch.total || parseInt(String(session.custom[SK_LIVE_TOTAL] || 0), 10) || 0;
+    if (total) session.custom[SK_LIVE_TOTAL] = String(total);
 
     var created  = 0;
     var skipped  = 0;
@@ -52,7 +65,7 @@ function runProfileBatch(offset, listId) {
         var tempPassword = require('*/cartridge/scripts/migration/core/tempPassword').generate();
         var result;
         try {
-            result = writer.createCustomer(sfccToken, listId, transformed.profile, tempPassword); // 1 call
+            result = writer.createCustomer(null, listId, transformed.profile, tempPassword);
         } catch (we) {
             failed++;
             if (errors.length < 5) {
@@ -79,18 +92,29 @@ function runProfileBatch(offset, listId) {
         }
     }
 
-    var nextOffset = offset + customers.length;
+    var nextLastId = lastIdFromCustomers(customers) || cursor;
+    if (nextLastId) {
+        session.custom[SK_LIVE_LAST_ID] = nextLastId;
+    }
+    var nextOffset = (offset || 0) + customers.length;
     return {
         ok:         true,
         total:      total,
         nextOffset: nextOffset,
+        nextLastId: nextLastId,
         created:    created,
         skipped:    skipped,
         failed:     failed,
-        done:       nextOffset >= total || customers.length === 0,
+        done:       customers.length === 0,
         errors:     errors,
         mappings:   mappings
     };
+}
+
+function lastIdFromCustomers(customers) {
+    if (!customers || !customers.length) return '';
+    var last = customers[customers.length - 1];
+    return last && last.id ? String(last.id) : '';
 }
 
 /**
