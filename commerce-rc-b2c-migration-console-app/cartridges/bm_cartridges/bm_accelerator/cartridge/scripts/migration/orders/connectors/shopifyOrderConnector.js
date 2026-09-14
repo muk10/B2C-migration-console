@@ -5,7 +5,21 @@ var shopifyApi = require('*/cartridge/scripts/migration/core/shopifyApi');
 var DEFAULT_LIMIT  = 100;
 var MAX_RETRIES    = 3;
 var RETRY_DELAY_MS = 500;
+var METAFIELD_BATCH_SIZE = 50;
 var _orderCountCache = {};
+
+var ORDER_METAFIELDS_QUERY = [
+    'query OrderMetafields($ids: [ID!]!) {',
+    '  nodes(ids: $ids) {',
+    '    ... on Order {',
+    '      id',
+    '      metafields(first: 250) {',
+    '        nodes { id namespace key type value }',
+    '      }',
+    '    }',
+    '  }',
+    '}'
+].join('\n');
 
 function sleep(ms) {
     var start = Date.now();
@@ -99,6 +113,42 @@ function buildOrdersQuery(options) {
 }
 
 /**
+ * Batch-fetch order metafield values and attach them to matching REST orders.
+ * @param {Object[]} orders Shopify REST orders.
+ * @returns {Object[]} The same orders, enriched with a metafields array.
+ */
+function enrichOrdersWithMetafields(orders) {
+    var list = orders || [];
+    var byGid = {};
+    var ids = [];
+    var i;
+
+    for (i = 0; i < list.length; i++) {
+        var gid = list[i] && list[i].admin_graphql_api_id;
+        if (!gid) continue;
+        byGid[gid] = list[i];
+        ids.push(gid);
+        list[i].metafields = [];
+    }
+
+    for (i = 0; i < ids.length; i += METAFIELD_BATCH_SIZE) {
+        var batchIds = ids.slice(i, i + METAFIELD_BATCH_SIZE);
+        var data = shopifyApi.graphql(ORDER_METAFIELDS_QUERY, { ids: batchIds });
+        var nodes = data && data.nodes ? data.nodes : [];
+        var ni;
+        for (ni = 0; ni < nodes.length; ni++) {
+            var node = nodes[ni];
+            if (!node || !node.id || !byGid[node.id]) continue;
+            byGid[node.id].metafields = node.metafields && node.metafields.nodes
+                ? node.metafields.nodes
+                : [];
+        }
+    }
+
+    return list;
+}
+
+/**
  * @param {string} token
  * @param {Object} options
  * @returns {{ results: Array, total: number }}
@@ -124,7 +174,7 @@ function fetchOrdersPage(token, options) {
         throw new Error('Failed to fetch Shopify orders (' + res.status + ')');
     }
 
-    var orders = res.data.orders || [];
+    var orders = enrichOrdersWithMetafields(res.data.orders || []);
     var total  = orders.length;
 
     return {
@@ -246,7 +296,7 @@ function fetchOrdersPageByOffset(token, options) {
     } while (pageInfo);
 
     return {
-        results: collected,
+        results: enrichOrdersWithMetafields(collected),
         total:   total || (offset + collected.length)
     };
 }
@@ -256,7 +306,9 @@ module.exports = {
     fetchOrdersPage:        fetchOrdersPageByOffset,
     countOrders:            countOrders,
     buildOrdersWhere:       buildOrdersQuery,
+    enrichOrdersWithMetafields: enrichOrdersWithMetafields,
     dateYearsAgo:           dateYearsAgo,
     DEFAULT_LIMIT:          DEFAULT_LIMIT,
-    MAX_RETRIES:            MAX_RETRIES
+    MAX_RETRIES:            MAX_RETRIES,
+    METAFIELD_BATCH_SIZE:   METAFIELD_BATCH_SIZE
 };

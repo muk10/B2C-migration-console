@@ -77,6 +77,13 @@
  * @property {CanonicalShipment[]} shipments
  * @property {string} status
  * @property {string} paymentStatus
+ * @property {string} confirmationStatus
+ * @property {string} channelType
+ * @property {string} externalOrderNo
+ * @property {string} externalOrderText
+ * @property {string} customerOrderReference
+ * @property {string} cancelCode
+ * @property {string} cancelDescription
  * @property {number} merchandiseTotal
  * @property {number} shippingTotal
  * @property {number} taxTotal
@@ -106,6 +113,13 @@ function createEmpty() {
         customAttributes: [],
         status:          '',
         paymentStatus:   '',
+        confirmationStatus: 'NOT_CONFIRMED',
+        channelType:     '',
+        externalOrderNo: '',
+        externalOrderText: '',
+        customerOrderReference: '',
+        cancelCode:      '',
+        cancelDescription: '',
         merchandiseTotal: 0,
         shippingTotal:    0,
         taxTotal:         0,

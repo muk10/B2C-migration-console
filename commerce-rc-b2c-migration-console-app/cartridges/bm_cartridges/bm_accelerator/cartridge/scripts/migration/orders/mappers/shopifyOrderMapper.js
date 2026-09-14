@@ -2,10 +2,87 @@
 
 var canonicalOrder      = require('*/cartridge/scripts/migration/orders/canonicalOrder');
 var orderShippingStatus = require('*/cartridge/scripts/migration/orders/orderShippingStatus');
+var sourceAttrIds       = require('*/cartridge/scripts/migration/core/sourceAttrIds');
+var attrIdMapSession    = require('*/cartridge/scripts/migration/core/attrIdMapSession');
 
 function parseMoney(val) {
     var n = parseFloat(String(val || '0'));
     return isNaN(n) ? 0 : n;
+}
+
+/**
+ * Convert Shopify locale notation to the underscore form used by SFCC.
+ * @param {string} locale
+ * @returns {string}
+ */
+function mapLocale(locale) {
+    return locale ? String(locale).replace(/-/g, '_') : 'en_US';
+}
+
+/**
+ * Map Shopify order sources to values accepted by the SFCC order XSD.
+ * @param {string} sourceName
+ * @returns {string}
+ */
+function mapChannelType(sourceName) {
+    var source = String(sourceName || '').toLowerCase();
+    if (source === 'pos' || source === 'point_of_sale') return 'Store';
+    if (source === 'shopify_draft_order') return 'CustomerServiceCenter';
+    if (source === 'facebook' || source === 'facebook_ads') return 'FacebookAds';
+    if (source === 'instagram') return 'InstagramCommerce';
+    if (source === 'google') return 'Google';
+    if (source === 'tiktok') return 'TikTok';
+    return 'Storefront';
+}
+
+/**
+ * Convert Shopify's inventory-reservation flag to the requested SFCC
+ * confirmation-status policy. Only an explicit boolean true is confirmed;
+ * missing or unexpected values remain safely unconfirmed.
+ * @param {*} confirmed Shopify confirmed value.
+ * @returns {string} SFCC confirmation status.
+ */
+function mapConfirmationStatus(confirmed) {
+    return confirmed === true ? 'CONFIRMED' : 'NOT_CONFIRMED';
+}
+
+/**
+ * Add a non-empty value to the canonical custom-attribute collection.
+ * Boolean false is a meaningful value and must not be dropped.
+ * @param {Object[]} attributes
+ * @param {string} id
+ * @param {*} value
+ */
+function addCustomAttribute(attributes, id, value) {
+    if (value === null || value === undefined || value === '') return;
+    attributes.push({ id: id, value: value });
+}
+
+/**
+ * Map dynamically discovered Shopify order metafields to SFCC custom attributes.
+ * @param {Object} shopOrder
+ * @returns {Object[]}
+ */
+function mapCustomAttributes(shopOrder) {
+    var attributes = [];
+
+    var metafields = shopOrder.metafields || [];
+    var attrMap = attrIdMapSession.read('order');
+    var i;
+    for (i = 0; i < metafields.length; i++) {
+        var metafield = metafields[i] || {};
+        if (!metafield.key) continue;
+        var rawId = metafield.namespace
+            ? metafield.namespace + '__' + metafield.key
+            : metafield.key;
+        var canonicalId = sourceAttrIds.toAttrId(rawId, 'shopify');
+        addCustomAttribute(
+            attributes,
+            attrIdMapSession.resolve(canonicalId, attrMap),
+            metafield.value
+        );
+    }
+    return attributes;
 }
 
 function mapAddress(addr) {
@@ -100,7 +177,7 @@ function mapDiscounts(shopOrder) {
 
 function mapFulfillmentStatus(status) {
     if (!status || status === 'unfulfilled') return 'NOT_SHIPPED';
-    if (status === 'fulfilled' || status === 'shipped') return 'SHIPPED';
+    if (status === 'fulfilled' || status === 'shipped' || status === 'success') return 'SHIPPED';
     if (status === 'partial') return 'PARTIAL';
     return String(status).toUpperCase();
 }
@@ -143,7 +220,7 @@ function mapShipments(shopOrder) {
 function mapPaymentStatus(financialStatus) {
     var map = {
         paid:              'PAID',
-        partially_paid:    'NOT_PAID',
+        partially_paid:    'PART_PAID',
         pending:           'NOT_PAID',
         authorized:        'NOT_PAID',
         refunded:          'PAID',
@@ -180,10 +257,12 @@ function mapOrder(shopOrder) {
     var order    = canonicalOrder.createEmpty();
     var currency = shopOrder.currency || '';
 
-    order.orderNumber      = shopOrder.name || String(shopOrder.order_number || shopOrder.id || '');
+    order.orderNumber      = shopOrder.order_number != null
+        ? String(shopOrder.order_number)
+        : String(shopOrder.id || shopOrder.name || '');
     order.currency         = currency;
     order.createdAt        = shopOrder.created_at || '';
-    order.customerLocale   = 'en_US';
+    order.customerLocale   = mapLocale(shopOrder.customer_locale);
     order.taxation         = shopOrder.taxes_included ? 'gross' : 'net';
     order.customer         = mapCustomer(shopOrder);
     order.billingAddress   = mapAddress(shopOrder.billing_address);
@@ -193,8 +272,13 @@ function mapOrder(shopOrder) {
     order.discounts        = mapDiscounts(shopOrder);
     order.shipments        = mapShipments(shopOrder);
     order.payments         = mapPayments(shopOrder);
+    order.customAttributes = mapCustomAttributes(shopOrder);
     order.status           = mapOrderStatus(shopOrder);
     order.paymentStatus    = mapPaymentStatus(shopOrder.financial_status);
+    order.confirmationStatus = mapConfirmationStatus(shopOrder.confirmed);
+    order.channelType      = mapChannelType(shopOrder.source_name);
+    order.externalOrderNo  = shopOrder.name || '';
+    order.externalOrderText = shopOrder.note || '';
 
     order.merchandiseTotal = parseMoney(shopOrder.subtotal_price);
     order.shippingTotal    = shopOrder.total_shipping_price_set && shopOrder.total_shipping_price_set.shop_money
@@ -224,5 +308,9 @@ function mapOrders(shopOrders) {
 module.exports = {
     mapOrder:   mapOrder,
     mapOrders:  mapOrders,
-    mapAddress: mapAddress
+    mapAddress: mapAddress,
+    mapLocale:  mapLocale,
+    mapChannelType: mapChannelType,
+    mapConfirmationStatus: mapConfirmationStatus,
+    mapCustomAttributes: mapCustomAttributes
 };

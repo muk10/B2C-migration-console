@@ -257,7 +257,9 @@
                 "fulfillment_status": "shippingStatus",
                 "note": "externalOrderText",
                 "customer_locale": "customerLocaleID",
-                "source_name": "channelType"
+                "source_name": "channelType",
+                "created_at": "creationDate",
+                "confirmed": "confirmationStatus"
             },
             "Store": {
                 "id": "ID",
@@ -1021,16 +1023,16 @@
                         "source": "source_name"
                     },
                     "confirmationStatus": {
-                        "status": "pending",
-                        "source": null
+                        "status": "mapped",
+                        "source": "confirmed"
                     },
                     "createdBy": {
                         "status": "pending",
                         "source": null
                     },
                     "creationDate": {
-                        "status": "pending",
-                        "source": null
+                        "status": "mapped",
+                        "source": "created_at"
                     },
                     "currencyCode": {
                         "status": "mapped",
@@ -1117,8 +1119,8 @@
                         "source": null
                     }
                 },
-                "mappedCount": 9,
-                "pendingCount": 22,
+                "mappedCount": 11,
+                "pendingCount": 20,
                 "sfccSystemCount": 31
             },
             "Store": {

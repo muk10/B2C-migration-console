@@ -11,12 +11,22 @@ cartridgeLoader.installCartridgeResolver();
 
 var ordersRoot = path.join(__dirname, '../../../../commerce-rc-b2c-migration-console-app/cartridges/bm_cartridges/bm_accelerator/cartridge/scripts/migration/orders');
 
+/**
+ * Load an order migration module.
+ * @param {string} modulePath - Module path relative to the order migration root.
+ * @returns {Object} Loaded module.
+ */
 function load(modulePath) {
     return require(path.join(ordersRoot, modulePath));
 }
 
 var generatorPath = path.join(ordersRoot, 'generators/sfccOrderXmlGenerator.js');
 
+/**
+ * Build a canonical order for XML generator tests.
+ * @param {string} no - Order number.
+ * @returns {Object} Canonical order fixture.
+ */
 function sampleOrder(no) {
     return {
         orderNumber: String(no),
@@ -53,6 +63,11 @@ function sampleOrder(no) {
         }],
         status: 'COMPLETED',
         paymentStatus: 'PAID',
+        confirmationStatus: 'NOT_CONFIRMED',
+        channelType: 'Storefront',
+        externalOrderNo: '#1001',
+        externalOrderText: 'Migrated order',
+        customerOrderReference: 'CONF-1001',
         merchandiseTotal: 10,
         shippingTotal: 0,
         taxTotal: 1,
@@ -93,7 +108,12 @@ describe('sfccOrderXmlGenerator', function () {
         assert.ok(xml.indexOf('<guest>false</guest>') < xml.indexOf('<customer-no>'));
         assert.ok(xml.indexOf('Product &amp; Co') > 0);
         assert.ok(xml.indexOf('<payment-status>PAID</payment-status>') > 0);
+        assert.include(xml, '<confirmation-status>NOT_CONFIRMED</confirmation-status>');
         assert.ok(xml.indexOf('<customer-locale>en_US</customer-locale>') > 0);
+        assert.include(xml, '<customer-order-reference>CONF-1001</customer-order-reference>');
+        assert.include(xml, '<channel-type>Storefront</channel-type>');
+        assert.include(xml, '<external-order-no>#1001</external-order-no>');
+        assert.include(xml, '<external-order-text>Migrated order</external-order-text>');
         assert.ok(xml.indexOf('<quantity unit="">1.0</quantity>') > 0);
         assert.ok(xml.indexOf('<shipment-id>000001</shipment-id>') > 0);
         assert.ok(xml.indexOf('<shipping-lineitems>') > 0);
