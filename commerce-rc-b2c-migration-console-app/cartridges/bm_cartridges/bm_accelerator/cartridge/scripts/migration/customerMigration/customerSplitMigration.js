@@ -13,6 +13,7 @@ var FileWriter   = require('dw/io/FileWriter');
 var fileResolver = require('*/cartridge/scripts/migration/core/migrationFileResolver');
 var uploader     = require('*/cartridge/scripts/migration/customerMigration/webDavUploader');
 var splitUtils   = require('*/cartridge/scripts/migration/customerMigration/customerSplitUtils');
+var storeBuckets = require('*/cartridge/scripts/migration/customerMigration/customerStoreBuckets');
 
 var MODULE_KEY = 'customer';
 var MAX_PER_FILE = splitUtils.MAX_PER_FILE;
@@ -50,6 +51,44 @@ function ensureImpexDir(relativePath) {
     return dir;
 }
 
+function listedBuckets(platformId) {
+    var raw = getStr(sk(platformId, 'bkts'));
+    return raw ? raw.split(',') : [];
+}
+
+function rememberBucket(platformId, bucket) {
+    var existing = getStr(sk(platformId, 'bkts'));
+    if (!existing) {
+        setStr(sk(platformId, 'bkts'), bucket);
+        return;
+    }
+    var parts = existing.split(',');
+    if (parts.indexOf(bucket) === -1) {
+        setStr(sk(platformId, 'bkts'), existing + ',' + bucket);
+    }
+}
+
+function platformForBucket(baseId, bucket) {
+    if (!bucket || bucket === storeBuckets.UNASSIGNED) return baseId;
+    return splitUtils.sessionScope(baseId, bucket, false);
+}
+
+function prefixForBucket(bucket) {
+    if (!bucket || bucket === storeBuckets.UNASSIGNED) return '';
+    return splitUtils.filePrefix(bucket, false);
+}
+
+function resetAllBuckets(platformId) {
+    var prev = listedBuckets(platformId);
+    var i;
+    for (i = 0; i < prev.length; i++) {
+        resetState(platformForBucket(platformId, prev[i]));
+    }
+    resetState(platformId);
+    setStr(sk(platformId, 'bkts'), '');
+    setStr(sk(platformId, 'idmap'), '');
+}
+
 function resetState(platformId) {
     setStr(sk(platformId, 'cur'), '');
     setNum(sk(platformId, 'part'), 1);
@@ -80,12 +119,12 @@ function uploadedList(platformId) {
     return raw ? raw.split(',') : [];
 }
 
-function openPart(platformId, part, xmlHeader) {
+function openPart(platformId, part, xmlHeader, filePrefix) {
     var impexPath = fileResolver.getRelativePath(MODULE_KEY);
     var dir       = ensureImpexDir(impexPath);
     var stem      = getStr(sk(platformId, 'stem'));
     if (!stem) {
-        stem = fileResolver.resolveRunFileName(MODULE_KEY, 0, 'webdav');
+        stem = fileResolver.resolveRunFileName(MODULE_KEY, 0, 'webdav', filePrefix || '');
         setStr(sk(platformId, 'stem'), stem);
     }
     var fileName = buildPartFileName(stem, part);
@@ -129,47 +168,112 @@ function closeAndUpload(platformId, xmlFooter) {
     return { ok: true, fileName: fileName };
 }
 
+function allUploadedFiles(platformId) {
+    var names = uploadedList(platformId);
+    var buckets = listedBuckets(platformId);
+    var b;
+    for (b = 0; b < buckets.length; b++) {
+        var pid = platformForBucket(platformId, buckets[b]);
+        if (pid === platformId) continue;
+        var extra = uploadedList(pid);
+        var e;
+        for (e = 0; e < extra.length; e++) {
+            if (extra[e] && names.indexOf(extra[e]) === -1) names.push(extra[e]);
+        }
+        var openName = getStr(sk(pid, 'file'));
+        if (openName && getStr(sk(pid, 'open')) === '1' && names.indexOf(openName) === -1) {
+            names.push(openName);
+        }
+    }
+    var baseOpen = getStr(sk(platformId, 'file'));
+    if (baseOpen && getStr(sk(platformId, 'open')) === '1' && names.indexOf(baseOpen) === -1) {
+        names.push(baseOpen);
+    }
+    return names;
+}
+
+function writeGroup(pid, prefix, customers, xmlBuilder, maxPerFile, errors) {
+    if (getStr(sk(pid, 'open')) !== '1' || !getStr(sk(pid, 'file'))) {
+        openPart(pid, getNum(sk(pid, 'part')) || 1, xmlBuilder.XML_HEADER, prefix);
+    }
+    var fragment = xmlBuilder.buildCustomerFragment(customers);
+    appendBody(getStr(sk(pid, 'file')), fragment.body);
+    setNum(sk(pid, 'inFile'), getNum(sk(pid, 'inFile')) + fragment.built + fragment.failed);
+    if (fragment.errors && fragment.errors.length && errors.length < 5) {
+        var add = fragment.errors.slice(0, 5 - errors.length);
+        var a;
+        for (a = 0; a < add.length; a++) errors.push(add[a]);
+    }
+    if (getNum(sk(pid, 'inFile')) >= maxPerFile) {
+        var rotated = closeAndUpload(pid, xmlBuilder.XML_FOOTER);
+        if (!rotated.ok) return rotated;
+        setNum(sk(pid, 'part'), getNum(sk(pid, 'part')) + 1);
+    }
+    return { ok: true, built: fragment.built, failed: fragment.failed };
+}
+
+function closeOpenBuckets(platformId, xmlFooter) {
+    var targets = [platformId];
+    var buckets = listedBuckets(platformId);
+    var i;
+    for (i = 0; i < buckets.length; i++) {
+        var pid = platformForBucket(platformId, buckets[i]);
+        if (targets.indexOf(pid) === -1) targets.push(pid);
+    }
+    for (i = 0; i < targets.length; i++) {
+        if (getStr(sk(targets[i], 'open')) === '1') {
+            var closed = closeAndUpload(targets[i], xmlFooter);
+            if (!closed.ok) return closed;
+        }
+    }
+    return { ok: true };
+}
+
 /**
  * Process one UI poll: fetch a few source pages, append XML, rotate files at 20k.
  *
  * @param {Object} opts
  * @param {number} opts.offset - 0 starts a new run; any other value continues session state
- * @param {string} opts.listId
- * @param {string} [opts.platformId] - ctp | shopify | bigcommerce (session isolation)
+ * @param {string} [opts.platformId]
+ * @param {string} [opts.filePrefix]
+ * @param {boolean} [opts.bucketCustomers] - split by Customer.stores while writing
+ * @param {Object} [opts.idToKey] - store id → key for file names
  * @param {Object} opts.xmlBuilder
- * @param {Function} opts.fetchPage - function(cursor) → { results, total, nextCursor, hasMore }
- * @param {Function} [opts.getCount] - used when the first page omits total
- * @param {number} [opts.pagesPerRequest]
- * @param {number} [opts.maxPerFile]
+ * @param {Function} opts.fetchPage
+ * @param {Function} [opts.getCount]
  * @returns {Object}
  */
 function runBatch(opts) {
     opts = opts || {};
-    if (!opts.listId) return { ok: false, error: 'listId is required' };
     if (!opts.xmlBuilder || !opts.fetchPage) {
         return { ok: false, error: 'xmlBuilder and fetchPage are required' };
     }
 
     var platformId      = opts.platformId || 'ctp';
+    var filePrefix      = opts.filePrefix || '';
     var xmlBuilder      = opts.xmlBuilder;
     var maxPerFile      = opts.maxPerFile || MAX_PER_FILE;
     var pagesPerRequest = opts.pagesPerRequest || DEFAULT_PAGES_PER_REQUEST;
+    var bucketCustomers = !!opts.bucketCustomers;
+    var idToKey         = opts.idToKey || {};
     var isFirst         = !opts.offset;
     var impexPath       = fileResolver.getRelativePath(MODULE_KEY);
 
     try {
         if (isFirst) {
-            resetState(platformId);
+            resetAllBuckets(platformId);
             var dirResult = uploader.ensureDirectory();
             if (!dirResult.ok) {
                 return { ok: false, error: 'WebDAV directory creation failed: ' + dirResult.error };
             }
-            fileResolver.getRunDate(MODULE_KEY, 0);
-            openPart(platformId, 1, xmlBuilder.XML_HEADER);
+            fileResolver.getRunDate(MODULE_KEY, 0, filePrefix);
+            if (!bucketCustomers) {
+                openPart(platformId, 1, xmlBuilder.XML_HEADER, filePrefix);
+            }
         }
 
-        if (getStr(sk(platformId, 'open')) !== '1' || !getStr(sk(platformId, 'file'))) {
-            openPart(platformId, getNum(sk(platformId, 'part')) || 1, xmlBuilder.XML_HEADER);
+        if (!bucketCustomers && (getStr(sk(platformId, 'open')) !== '1' || !getStr(sk(platformId, 'file')))) {
+            openPart(platformId, getNum(sk(platformId, 'part')) || 1, xmlBuilder.XML_HEADER, filePrefix);
         }
 
         var builtThis       = 0;
@@ -177,6 +281,7 @@ function runBatch(opts) {
         var errors          = [];
         var pages           = 0;
         var sourceExhausted = false;
+        var rotated         = false;
 
         while (pages < pagesPerRequest) {
             var cursor = getStr(sk(platformId, 'cur'));
@@ -197,16 +302,37 @@ function runBatch(opts) {
                 break;
             }
 
-            var fragment = xmlBuilder.buildCustomerFragment(customers);
-            appendBody(getStr(sk(platformId, 'file')), fragment.body);
-            builtThis  += fragment.built;
-            failedThis += fragment.failed;
-            setNum(sk(platformId, 'built'), getNum(sk(platformId, 'built')) + fragment.built);
-            setNum(sk(platformId, 'failed'), getNum(sk(platformId, 'failed')) + fragment.failed);
-            setNum(sk(platformId, 'inFile'), getNum(sk(platformId, 'inFile')) + fragment.built + fragment.failed);
-
-            if (fragment.errors && fragment.errors.length && errors.length < 5) {
-                errors = errors.concat(fragment.errors.slice(0, 5 - errors.length));
+            if (bucketCustomers) {
+                var groups = storeBuckets.groupByBucket(customers, idToKey);
+                var bucket;
+                for (var bucket in groups) {
+                    if (!Object.prototype.hasOwnProperty.call(groups, bucket)) continue;
+                    rememberBucket(platformId, bucket);
+                    var pid = platformForBucket(platformId, bucket);
+                    var prefix = prefixForBucket(bucket);
+                    var written = writeGroup(pid, prefix, groups[bucket], xmlBuilder, maxPerFile, errors);
+                    if (!written.ok) return { ok: false, error: written.error };
+                    if (getStr(sk(pid, 'open')) !== '1') rotated = true;
+                }
+                builtThis += customers.length;
+                setNum(sk(platformId, 'built'), getNum(sk(platformId, 'built')) + customers.length);
+            } else {
+                var fragment = xmlBuilder.buildCustomerFragment(customers);
+                appendBody(getStr(sk(platformId, 'file')), fragment.body);
+                builtThis  += fragment.built;
+                failedThis += fragment.failed;
+                setNum(sk(platformId, 'built'), getNum(sk(platformId, 'built')) + fragment.built);
+                setNum(sk(platformId, 'failed'), getNum(sk(platformId, 'failed')) + fragment.failed);
+                setNum(sk(platformId, 'inFile'), getNum(sk(platformId, 'inFile')) + fragment.built + fragment.failed);
+                if (fragment.errors && fragment.errors.length && errors.length < 5) {
+                    errors = errors.concat(fragment.errors.slice(0, 5 - errors.length));
+                }
+                if (getNum(sk(platformId, 'inFile')) >= maxPerFile) {
+                    var oneRotate = closeAndUpload(platformId, xmlBuilder.XML_FOOTER);
+                    if (!oneRotate.ok) return { ok: false, error: oneRotate.error };
+                    setNum(sk(platformId, 'part'), getNum(sk(platformId, 'part')) + 1);
+                    rotated = true;
+                }
             }
 
             if (page.nextCursor) {
@@ -216,18 +342,11 @@ function runBatch(opts) {
                 sourceExhausted = true;
             }
 
-            if (getNum(sk(platformId, 'inFile')) >= maxPerFile) {
-                var rotated = closeAndUpload(platformId, xmlBuilder.XML_FOOTER);
-                if (!rotated.ok) return { ok: false, error: rotated.error };
-                setNum(sk(platformId, 'part'), getNum(sk(platformId, 'part')) + 1);
-                break;
-            }
-
-            if (sourceExhausted) break;
+            if (rotated || sourceExhausted) break;
         }
 
-        if (sourceExhausted && getStr(sk(platformId, 'open')) === '1') {
-            var finished = closeAndUpload(platformId, xmlBuilder.XML_FOOTER);
+        if (sourceExhausted) {
+            var finished = closeOpenBuckets(platformId, xmlBuilder.XML_FOOTER);
             if (!finished.ok) return { ok: false, error: finished.error };
         }
 
@@ -235,7 +354,7 @@ function runBatch(opts) {
         var built     = getNum(sk(platformId, 'built'));
         var failed    = getNum(sk(platformId, 'failed'));
         var processed = built + failed;
-        var files     = uploadedList(platformId);
+        var files     = bucketCustomers ? allUploadedFiles(platformId) : uploadedList(platformId);
         var expected  = expectedFileCount(total, maxPerFile);
         var filePart  = getNum(sk(platformId, 'part')) || 1;
         var done      = sourceExhausted;
@@ -244,11 +363,16 @@ function runBatch(opts) {
         }
 
         if (!done && processed > 0 && total > 0 && processed >= total) {
-            if (getStr(sk(platformId, 'open')) === '1') {
-                var forceClose = closeAndUpload(platformId, xmlBuilder.XML_FOOTER);
-                if (!forceClose.ok) return { ok: false, error: forceClose.error };
-            }
+            var forceClose = closeOpenBuckets(platformId, xmlBuilder.XML_FOOTER);
+            if (!forceClose.ok) return { ok: false, error: forceClose.error };
             done = true;
+        }
+
+        var buckets = listedBuckets(platformId);
+        var storeBucketsUsed = 0;
+        var bi;
+        for (bi = 0; bi < buckets.length; bi++) {
+            if (buckets[bi] && buckets[bi] !== storeBuckets.UNASSIGNED) storeBucketsUsed++;
         }
 
         return {
@@ -259,12 +383,13 @@ function runBatch(opts) {
             built:         builtThis,
             failed:        failedThis,
             errors:        errors,
-            fileName:      getStr(sk(platformId, 'file')),
+            fileName:      getStr(sk(platformId, 'file')) || (files.length ? files[files.length - 1] : ''),
             filePart:      filePart,
             fileCount:     files.length || (done ? 0 : 1),
             expectedFiles: expected,
             files:         files.join(','),
-            runDate:       fileResolver.getRunDate(MODULE_KEY, 1),
+            storeBuckets:  storeBucketsUsed,
+            runDate:       fileResolver.getRunDate(MODULE_KEY, 1, filePrefix),
             impexPath:     impexPath
         };
     } catch (e) {

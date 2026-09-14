@@ -1471,6 +1471,27 @@ exports.CustomerMigrationCount = function () {
 exports.CustomerMigrationCount.public = true;
 
 /**
+ * Detect whether source customers are store-scoped (per-site IMPEX) or shared.
+ * GET — no params required.
+ */
+exports.CustomerSourceSites = function () {
+    try {
+        var detector = require('*/cartridge/scripts/migration/customerMigration/customerSiteDetector');
+        jsonResponse(detector.detect(resolvePlatform()));
+    } catch (e) {
+        jsonResponse({
+            ok:              false,
+            error:           e.message || String(e),
+            mode:            'shared',
+            stores:          [],
+            unassignedCount: 0,
+            assignedCount:   0
+        });
+    }
+};
+exports.CustomerSourceSites.public = true;
+
+/**
  * Migrate one batch of customer profiles from CT to SFCC.
  * POST: offset=<n>&listId=<sfcc-customer-list-id>&lastId=<ctp-uuid>
  * Response includes mappings[] for the caller to drive phase 2 (address migration).
@@ -1542,28 +1563,25 @@ exports.MigrateCustomerAddresses = function () {
 exports.MigrateCustomerAddresses.public = true;
 
 /**
- * Full Migration — one poll writes a few source pages into a 20k-customer XML part.
- * POST: offset=<n>&listId=<sfcc-customer-list-id>  (offset 0 starts a new run)
+ * Full Migration — one poll writes a few source pages into XML.
+ * CT: each customer's stores field selects the file series while writing.
+ * POST: offset=<n>  (offset 0 starts a new run)
  */
 exports.FullMigrationBuildBatch = function () {
     var offset = parseInt(getParam('offset') || '0', 10);
-    var listId = getParam('listId');
-
-    if (!listId) {
-        jsonResponse({ ok: false, error: 'listId is required' });
-        return;
-    }
     try {
         var platform = resolvePlatform();
         var fullRunner;
         if (platform === 'shopify') {
             fullRunner = require('*/cartridge/scripts/migration/customerMigration/shopifyFullMigrationRunner');
+            jsonResponse(fullRunner.runBatch(offset));
         } else if (platform === 'bigcommerce') {
             fullRunner = require('*/cartridge/scripts/migration/customerMigration/bcFullMigrationRunner');
+            jsonResponse(fullRunner.runBatch(offset));
         } else {
             fullRunner = require('*/cartridge/scripts/migration/customerMigration/fullMigrationRunner');
+            jsonResponse(fullRunner.runBatch(offset));
         }
-        jsonResponse(fullRunner.runBatch(offset, listId));
     } catch (e) {
         jsonResponse({ ok: false, error: e.message || String(e) });
     }

@@ -60,6 +60,24 @@ describe('customer split pagination', function () {
         });
     });
 
+    describe('filePrefix and sessionScope', function () {
+        it('uses customers-{key} so IMPEX names encode the source site', function () {
+            assert.equal(utils.filePrefix('uk', false), 'customers-uk');
+            assert.equal(utils.filePrefix('', true), 'customers-unassigned');
+            assert.equal(utils.filePrefix('', false), '');
+        });
+
+        it('isolates session keys per source site', function () {
+            assert.equal(utils.sessionScope('ctp'), 'ctp');
+            assert.equal(utils.sessionScope('ctp', 'uk', false), 'ctp_customers-uk');
+            assert.equal(utils.sessionScope('ctp', '', true), 'ctp_customers-unassigned');
+            assert.notEqual(
+                utils.sessionScope('ctp', 'uk', false),
+                utils.sessionScope('ctp', 'de', false)
+            );
+        });
+    });
+
     describe('CT keyset query', function () {
         it('never sends offset and pages with id > lastId', function () {
             var first = fetcher.buildKeysetQuery(500, '', true);
@@ -74,6 +92,30 @@ describe('customer split pagination', function () {
             assert.notInclude(next, 'withTotal');
             assert.include(next, 'where=');
             assert.include(decodeURIComponent(next), 'id > "8bd58511-e17e-4429-acbe-bae8ac8d35f5"');
+        });
+
+        it('filters by store id or key and combines with keyset cursor', function () {
+            var first = fetcher.buildKeysetQuery(500, '', true, fetcher.storeWhere('uk', 'store-uuid'));
+            var decoded = decodeURIComponent(first);
+            assert.include(decoded, 'stores(id = "store-uuid")');
+            assert.include(decoded, 'stores(key = "uk")');
+            assert.notInclude(decoded, 'id >');
+
+            var next = fetcher.buildKeysetQuery(
+                500,
+                '8bd58511-e17e-4429-acbe-bae8ac8d35f5',
+                false,
+                fetcher.storeWhere('uk', '')
+            );
+            var where = decodeURIComponent(next);
+            assert.include(where, 'stores(key = "uk")');
+            assert.include(where, 'id > "8bd58511-e17e-4429-acbe-bae8ac8d35f5"');
+            assert.include(where, ' and ');
+        });
+
+        it('filters unassigned customers', function () {
+            var qs = fetcher.buildKeysetQuery(500, '', true, fetcher.UNASSIGNED_WHERE);
+            assert.include(decodeURIComponent(qs), 'stores is empty');
         });
 
         it('reads the last UUID as the next cursor', function () {

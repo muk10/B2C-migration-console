@@ -11,13 +11,11 @@ var FETCH_PAGE_SIZE = 250;
  * 20k-customer XML part. Project size is unlimited — files rotate at 20k.
  *
  * @param {number} offset - 0 starts a new run
- * @param {string} listId
  * @returns {Object}
  */
-function runBatch(offset, listId) {
+function runBatch(offset) {
     return splitRunner.runBatch({
         offset:     offset,
-        listId:     listId,
         platformId: 'shopify',
         xmlBuilder: xmlBuilder,
         getCount:   function () { return fetcher.getCount(); },

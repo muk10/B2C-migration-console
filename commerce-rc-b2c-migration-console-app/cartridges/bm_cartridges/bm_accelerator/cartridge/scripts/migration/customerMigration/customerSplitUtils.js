@@ -18,6 +18,35 @@ function padPart(part) {
     return p;
 }
 
+function sanitizeScope(val) {
+    return String(val || '').replace(/[^a-zA-Z0-9_-]/g, '_').substring(0, 40);
+}
+
+/**
+ * Session + file prefix for one generate run.
+ * @param {string} [storeKey]
+ * @param {boolean} [unassigned]
+ * @returns {string}
+ */
+function filePrefix(storeKey, unassigned) {
+    if (unassigned) return 'customers-unassigned';
+    var key = sanitizeScope(storeKey);
+    return key ? ('customers-' + key) : '';
+}
+
+/**
+ * Isolate split-runner session keys per source site.
+ * @param {string} platformId
+ * @param {string} [storeKey]
+ * @param {boolean} [unassigned]
+ * @returns {string}
+ */
+function sessionScope(platformId, storeKey, unassigned) {
+    var p = String(platformId || 'ctp');
+    var extra = filePrefix(storeKey, unassigned);
+    return extra ? (p + '_' + extra) : p;
+}
+
 function buildPartFileName(stem, part) {
     var base = String(stem || 'customer.xml');
     if (/\.xml$/i.test(base)) {
@@ -30,5 +59,8 @@ module.exports = {
     MAX_PER_FILE:      MAX_PER_FILE,
     expectedFileCount: expectedFileCount,
     padPart:           padPart,
-    buildPartFileName: buildPartFileName
+    buildPartFileName: buildPartFileName,
+    sanitizeScope:     sanitizeScope,
+    filePrefix:        filePrefix,
+    sessionScope:      sessionScope
 };
