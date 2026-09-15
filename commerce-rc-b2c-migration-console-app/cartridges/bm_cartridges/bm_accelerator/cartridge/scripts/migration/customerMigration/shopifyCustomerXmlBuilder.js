@@ -26,7 +26,36 @@ function buildCustomerXml(shopifyCustomer) {
     xml += '            <password encrypted="false">' + xmlEsc(password) + '</password>\n';
     xml += '        </credentials>\n';
 
-    xml += ctpXmlBuilder.buildProfileXml(profile);
+    xml += '        <profile>\n';
+    if (profile.first_name) xml += '            <first-name>' + xmlEsc(profile.first_name) + '</first-name>\n';
+    if (profile.last_name)  xml += '            <last-name>'  + xmlEsc(profile.last_name)  + '</last-name>\n';
+    if (profile.email)      xml += '            <email>'      + xmlEsc(profile.email)      + '</email>\n';
+    if (profile.phone)      xml += '            <phone-mobile>' + xmlEsc(profile.phone)     + '</phone-mobile>\n';
+    if (profile.preferred_locale) xml += '            <preferred-locale>' + xmlEsc(profile.preferred_locale) + '</preferred-locale>\n';
+
+    var customAttrXml = '';
+    var profileKeys = Object.keys(profile);
+    for (var pk = 0; pk < profileKeys.length; pk++) {
+        var key = profileKeys[pk];
+        if (key.length > 2 && key.charAt(0) === 'c' && key.charAt(1) === '_') {
+            var attrVal = profile[key];
+            if (attrVal !== null && attrVal !== undefined) {
+                customAttrXml += '                <custom-attribute attribute-id="' + xmlEsc(key.slice(2)) + '">';
+                if (Array.isArray(attrVal)) {
+                    for (var vi = 0; vi < attrVal.length; vi++) {
+                        customAttrXml += '<value>' + xmlEsc(attrVal[vi]) + '</value>';
+                    }
+                } else {
+                    customAttrXml += xmlEsc(attrVal);
+                }
+                customAttrXml += '</custom-attribute>\n';
+            }
+        }
+    }
+    if (customAttrXml) {
+        xml += '            <custom-attributes>\n' + customAttrXml + '            </custom-attributes>\n';
+    }
+    xml += '        </profile>\n';
 
     if (addresses.length > 0) {
         xml += '        <addresses>\n';
@@ -37,10 +66,10 @@ function buildCustomerXml(shopifyCustomer) {
     }
 
     // Shopify has no direct customer-group concept — one SFCC group per tag instead.
-    if (profile.c_shopify_tags && profile.c_shopify_tags.length) {
+    if (profile.shopify_tags && profile.shopify_tags.length) {
         xml += '        <customer-groups>\n';
-        for (var g = 0; g < profile.c_shopify_tags.length; g++) {
-            xml += '            <customer-group group-id="' + xmlEsc(groupFetcher.groupIdForTag(profile.c_shopify_tags[g])) + '"/>\n';
+        for (var g = 0; g < profile.shopify_tags.length; g++) {
+            xml += '            <customer-group group-id="' + xmlEsc(groupFetcher.groupIdForTag(profile.shopify_tags[g])) + '"/>\n';
         }
         xml += '        </customer-groups>\n';
     }

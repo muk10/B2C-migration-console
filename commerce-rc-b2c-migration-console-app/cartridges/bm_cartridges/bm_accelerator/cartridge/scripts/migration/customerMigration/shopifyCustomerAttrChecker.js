@@ -1,7 +1,6 @@
 'use strict';
 
 var runner    = require('*/cartridge/scripts/migration/core/attrPreflightRunner');
-var nativeMap = require('*/cartridge/scripts/migration/config/nativeFieldMap');
 
 var SHOPIFY_ATTR_GROUP_ID   = 'ShopifyMigration';
 var SHOPIFY_ATTR_GROUP_NAME = 'Shopify Migration';
@@ -10,13 +9,9 @@ var SHOPIFY_ATTR_GROUP_NAME = 'Shopify Migration';
  * @returns {{ mapped: Array, missing: Array, coveragePending: Array, skipped: Array }}
  */
 function checkMissingAttributes() {
-    var fields = nativeMap.getMappedSourceFields('shopify', 'Customer');
-    return runner.classifyFields({
-        sfccObjectType: 'Profile',
-        taskName:       'Customer',
-        moduleKey:      'customer',
-        fields:         fields
-    });
+    // Standard customer properties use native mappings. Only live Shopify
+    // metafield definitions are offered as custom-attribute candidates.
+    return runner.checkMissing('Profile', null, null, null, 'customer', 'Customer');
 }
 
 function createAttributes(attrs) {

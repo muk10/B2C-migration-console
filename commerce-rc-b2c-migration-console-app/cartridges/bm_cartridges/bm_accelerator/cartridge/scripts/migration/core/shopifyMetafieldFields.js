@@ -6,6 +6,7 @@ var sourceAttrIds  = require('*/cartridge/scripts/migration/core/sourceAttrIds')
 
 var SFCC_OWNER_TYPES = {
     Order:                  ['ORDER'],
+    Profile:                ['CUSTOMER'],
     ProductInventoryRecord: [],
     Store:                  ['LOCATION'],
     PriceBook:              ['PRODUCT', 'PRODUCTVARIANT'],

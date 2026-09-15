@@ -61,7 +61,7 @@ function runProfileBatchById(shopifyId, listId) {
     }
 
     if (result.ok) {
-        assignTagGroups(result.customerNo, transformed.profile.c_shopify_tags);
+        assignTagGroups(result.customerNo, transformed.profile.shopify_tags);
         return {
             ok: true, created: 1, skipped: 0, failed: 0, errors: [],
             mappings: [{

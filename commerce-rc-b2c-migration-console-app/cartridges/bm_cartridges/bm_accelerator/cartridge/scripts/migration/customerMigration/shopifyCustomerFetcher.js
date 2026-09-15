@@ -2,9 +2,62 @@
 
 var http      = require('*/cartridge/scripts/migration/core/http');
 var connector = require('*/cartridge/scripts/migration/connectors/shopify/shopifyConnector');
+var shopifyApi = require('*/cartridge/scripts/migration/core/shopifyApi');
 var cfg       = require('*/cartridge/scripts/migration/configAccessor');
 
 var MAX_PAGE_SIZE = 250;
+var METAFIELD_BATCH_SIZE = 50;
+
+var CUSTOMER_METAFIELDS_QUERY = [
+    'query CustomerMetafields($ids: [ID!]!) {',
+    '  nodes(ids: $ids) {',
+    '    ... on Customer {',
+    '      id',
+    '      metafields(first: 250) {',
+    '        nodes { id namespace key type value }',
+    '      }',
+    '    }',
+    '  }',
+    '}'
+].join('\n');
+
+/**
+ * Attach Shopify customer metafield values to REST customer records.
+ * @param {Object[]} customers Shopify REST customers.
+ * @returns {Object[]} Enriched customers.
+ */
+function enrichCustomersWithMetafields(customers) {
+    var list = customers || [];
+    var byGid = {};
+    var ids = [];
+    var i;
+
+    for (i = 0; i < list.length; i++) {
+        var gid = list[i] && list[i].admin_graphql_api_id;
+        if (gid) {
+            byGid[gid] = list[i];
+            ids.push(gid);
+            list[i].metafields = [];
+        }
+    }
+
+    for (i = 0; i < ids.length; i += METAFIELD_BATCH_SIZE) {
+        var data = shopifyApi.graphql(CUSTOMER_METAFIELDS_QUERY, {
+            ids: ids.slice(i, i + METAFIELD_BATCH_SIZE)
+        }, cfg.shopify);
+        var nodes = data && data.nodes ? data.nodes : [];
+        for (var ni = 0; ni < nodes.length; ni++) {
+            var node = nodes[ni];
+            if (node && node.id && byGid[node.id]) {
+                byGid[node.id].metafields = node.metafields && node.metafields.nodes
+                    ? node.metafields.nodes
+                    : [];
+            }
+        }
+    }
+
+    return list;
+}
 
 /**
  * Parse the Shopify Link response header for the "next" page cursor.
@@ -52,7 +105,7 @@ function fetchPage(pageInfo, limit) {
         throw new Error('Shopify customers fetch failed (' + res.status + ')');
     }
     return {
-        results:      res.data.customers || [],
+        results:      enrichCustomersWithMetafields(res.data.customers || []),
         nextPageInfo: parseNextPageInfo(res.link)
     };
 }
@@ -70,11 +123,14 @@ function fetchById(shopifyId) {
     if (res.status !== 200) {
         throw new Error('Shopify customer fetch failed (' + res.status + ') for id: ' + id);
     }
-    return res.data.customer || null;
+    var customer = res.data.customer || null;
+    return customer ? enrichCustomersWithMetafields([customer])[0] : null;
 }
 
 module.exports = {
-    getCount:  getCount,
-    fetchPage: fetchPage,
-    fetchById: fetchById
+    getCount:                       getCount,
+    fetchPage:                      fetchPage,
+    fetchById:                      fetchById,
+    enrichCustomersWithMetafields: enrichCustomersWithMetafields,
+    METAFIELD_BATCH_SIZE:           METAFIELD_BATCH_SIZE
 };
