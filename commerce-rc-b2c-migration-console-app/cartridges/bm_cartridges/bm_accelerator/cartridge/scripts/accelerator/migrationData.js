@@ -587,8 +587,8 @@ function getMigrationUi(platformId) {
         commercetools: 'Scans CT <strong>order</strong> custom-type field definitions and checks whether matching attributes exist on the SFCC <strong>Order</strong> system object.'
     });
     ui.orderHowWorks = pick({
-        shopify: 'Fetches orders from Shopify in pages, maps and validates each order, and streams one SFCC order XML to',
-        commercetools: 'Fetches orders from commercetools in pages, maps and validates each order, and streams one SFCC order XML to'
+        shopify: 'Fetches orders from Shopify in pages, maps and validates each order, and writes SFCC order XML files of up to 190 MB each (a new file starts when one is full) to',
+        commercetools: 'Fetches orders from commercetools in pages, maps and validates each order, and writes SFCC order XML files of up to 190 MB each (a new file starts when one is full) to'
     });
     ui.pbHowWorks = pick({
         shopify: 'Select pricebooks from either section (or both). Each generates SFCC pricebook XML with <code>price-table</code> entries per SKU, uploaded to WebDAV. Variant prices are read from Shopify products.',

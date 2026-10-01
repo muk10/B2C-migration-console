@@ -80,6 +80,7 @@
                             <option value="1">1 ${Resource.msg('accelerator.ordermigration.year', 'accelerator', null)}</option>
                             <option value="2">2 ${Resource.msg('accelerator.ordermigration.years.plural', 'accelerator', null)}</option>
                             <option value="3">3 ${Resource.msg('accelerator.ordermigration.years.plural', 'accelerator', null)}</option>
+                            <option value="all">${Resource.msg('accelerator.ordermigration.years.all', 'accelerator', null)}</option>
                         </select>
                     </div>
                     <div>
@@ -120,7 +121,7 @@
             <isprint value="${pdict.migrationUi.orderHowWorks}" encoding="off"/>
             <code>/Impex/${pdict.impexPath}/</code>.<br/>
             Then run <strong>Administration &rarr; Site Development &rarr; Import &amp; Export</strong>
-            and import the generated order XML.
+            and import the generated order XML files.
         </div>
 
         <ul class="acc-phases" id="full-phase-list" style="display:none;margin-bottom:24px;">

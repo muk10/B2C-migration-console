@@ -1,5 +1,5 @@
 /**
- * Order migration — filter, count, and stream one SFCC order XML to IMPEX.
+ * Order migration — filter, count, and export SFCC order XML part files to IMPEX in batches.
  */
 (function () {
     'use strict';
@@ -250,32 +250,55 @@
             setPhase('full', 'build', 'active', 'Streaming orders to IMPEX...', 25);
             setPhase('full', 'import', 'pending', 'Waiting for Phase 1…', 0);
 
-            var body = getFilterParams() + '&singleFile=true&offset=0';
-            post(cfg.exportUrl, body, function (data) {
-                if (!data.ok) {
-                    setPhase('full', 'build', 'error', data.error || 'Failed', 0);
-                    if (fullOverallEl) fullOverallEl.textContent = data.error || 'Build failed';
-                    finalizeFull(false);
-                    return;
-                }
+            var filters = getFilterParams();
+            // Each request exports up to 1,000 orders into part files and returns its state;
+            // send the state back until the server reports done.
+            function exportNext(state) {
+                var body = filters + (state ? '&state=' + encodeURIComponent(JSON.stringify(state)) : '');
+                post(cfg.exportUrl, body, function (data) {
+                    if (!data.ok) {
+                        var msg = (data.error || 'Failed') + (state ? ' (after ' + fmtNum(state.processed) + ' orders; start again for a complete export)' : '');
+                        setPhase('full', 'build', 'error', msg, 0);
+                        if (fullOverallEl) fullOverallEl.textContent = data.error || 'Build failed';
+                        finalizeFull(false);
+                        return;
+                    }
+                    // continue only when the server hands back a state to resume from
+                    if (!data.done && data.state) {
+                        var pct = data.total ? Math.min(99, Math.round(data.processed * 100 / data.total)) : 50;
+                        setPhase('full', 'build', 'active', fmtNum(data.processed) + ' of ' + fmtNum(data.total)
+                            + ' orders processed, ' + (data.files || []).length + ' file(s)', pct);
+                        exportNext(data.state);
+                        return;
+                    }
+                    showBuildResult(data);
+                });
+            }
+            exportNext(null);
+        }
 
-                var report = data.report || {};
-                var built  = report.ordersValidated || data.built || 0;
-                var failed = report.ordersFailed || data.failed || 0;
-                var buildState = 'done';
-                if (failed > 0 && built === 0) buildState = 'error';
-                else if (failed > 0) buildState = 'warning';
+        function showBuildResult(data) {
+            var report = data.report || {};
+            var built  = report.ordersValidated || data.built || 0;
+            var failed = report.ordersFailed || data.failed || 0;
+            var buildState = 'done';
+            if (failed > 0 && built === 0) buildState = 'error';
+            else if (failed > 0) buildState = 'warning';
 
-                var buildDetail = built + ' order(s) written';
-                if (failed > 0) buildDetail += ', ' + failed + ' failed validation';
-                if (data.fileName) buildDetail += ' — ' + data.fileName;
+            var files = data.files || [];
+            var buildDetail = fmtNum(built) + ' order(s) written';
+            if (failed > 0) buildDetail += ', ' + fmtNum(failed) + ' failed validation';
+            if (data.productsNotFound > 0) {
+                buildDetail += ', ' + fmtNum(data.productsNotFound)
+                    + ' line item(s) with no matching SFCC product (SKU kept)';
+            }
+            if (files.length) buildDetail += ' — ' + files.length + ' file(s): ' + files.join(', ');
 
-                setPhase('full', 'build', buildState, buildDetail, 100);
-                if (fullOverallEl) {
-                    fullOverallEl.textContent = built + ' validated, ' + failed + ' failed';
-                }
-                finalizeFull(true, data.fileName);
-            });
+            setPhase('full', 'build', buildState, buildDetail, 100);
+            if (fullOverallEl) {
+                fullOverallEl.textContent = fmtNum(built) + ' validated, ' + fmtNum(failed) + ' failed';
+            }
+            finalizeFull(true, files.length > 1 ? files.length + ' order XML files' : files[0]);
         }
 
         if (yearsEl) yearsEl.addEventListener('change', showCountIdle);

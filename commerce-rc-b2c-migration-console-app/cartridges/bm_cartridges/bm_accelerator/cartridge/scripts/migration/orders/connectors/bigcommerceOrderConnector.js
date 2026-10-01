@@ -37,7 +37,23 @@ function authenticate(creds) {
     return (creds && creds.accessToken) || bigcommerceApi.getCreds().accessToken;
 }
 
+/**
+ * Parse the order date range: 1, 2 or 3 years, or 'all' (0) for every order.
+ * @param {*} value - date range from the request or options; empty means 1 year
+ * @returns {number} years, 0 meaning all orders
+ */
+function parseYears(value) {
+    if (value === undefined || value === null || value === '') return 1;
+    if (String(value).toLowerCase() === 'all') return 0;
+    var years = parseInt(String(value), 10);
+    if ([0, 1, 2, 3].indexOf(years) < 0) {
+        throw new Error('Date range must be 1, 2 or 3 years, or all');
+    }
+    return years;
+}
+
 function dateYearsAgo(years) {
+    if (years === 0) return ''; // all orders: no lower bound on createdAt
     var d = new Date();
     d.setFullYear(d.getFullYear() - years);
     return d.toISOString();
@@ -104,7 +120,7 @@ function hydrateOrder(order) {
 
 function countCacheKey(options) {
     return [
-        options.years || 1,
+        parseYears(options.years),
         options.orderState || '',
         options.paymentState || '',
         options.sinceDate || ''
@@ -121,7 +137,7 @@ function countOrders(options) {
         return _orderCountCache[cacheKey];
     }
 
-    var years     = parseInt(String(options.years || 1), 10);
+    var years     = parseYears(options.years);
     var maxCount  = options.maxCount ? parseInt(String(options.maxCount), 10) : null;
     var sinceDate = dateYearsAgo(years);
     var total     = 0;
@@ -167,8 +183,8 @@ function countOrders(options) {
  * @returns {{ results: Array, total: number }}
  */
 function fetchOrdersPageByOffset(token, options) {
-    var years     = parseInt(String(options.years || 1), 10);
-    var sinceDate = options.sinceDate || dateYearsAgo(years);
+    var years     = parseYears(options.years);
+    var sinceDate = options.sinceDate !== undefined ? options.sinceDate : dateYearsAgo(years);
     var offset    = options.offset || 0;
     var limit     = options.limit || DEFAULT_LIMIT;
     var pageSize  = 50;
@@ -217,6 +233,7 @@ module.exports = {
     countOrders:     countOrders,
     buildOrdersWhere: buildOrdersQuery,
     dateYearsAgo:    dateYearsAgo,
+    parseYears:      parseYears,
     DEFAULT_LIMIT:   DEFAULT_LIMIT,
     MAX_RETRIES:     MAX_RETRIES
 };

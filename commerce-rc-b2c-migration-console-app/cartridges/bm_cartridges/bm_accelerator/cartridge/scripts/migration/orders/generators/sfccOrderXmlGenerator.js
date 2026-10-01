@@ -89,8 +89,59 @@ function addressXml(tagName, addr, indent) {
     lines.push(inner + '<state-code>' + escapeXml(addr.stateCode) + '</state-code>');
     lines.push(inner + '<country-code>' + escapeXml(addr.countryCode) + '</country-code>');
     lines.push(inner + '<phone>' + escapeXml(addr.phone) + '</phone>');
+    pushCustomAttributes(lines, addr.customAttributes, inner);
     lines.push(pad + '</' + tagName + '>');
     return lines.join('\n');
+}
+
+/**
+ * Append a custom-attributes block for line items, addresses, payments and adjustments.
+ * IDs follow the order attribute map from Check Attributes (renames apply), never a system field.
+ * @param {string[]} parts - output lines (changed in place)
+ * @param {Array<{id: string, value: *}>} entries
+ * @param {string} indent - indent of the <custom-attributes> element
+ */
+function pushCustomAttributes(parts, entries, indent) {
+    if (!entries || !entries.length) return;
+    var mapped = runtimeAttrMap.applyEntries(entries, 'orderDetail', runtimeAttrMap.readMap('order'));
+    var lines = [];
+    for (var i = 0; i < mapped.custom.length; i++) {
+        var xml = customAttributeXml(mapped.custom[i], indent + '    ');
+        if (xml) lines.push(xml);
+    }
+    if (!lines.length) return;
+    parts.push(indent + '<custom-attributes>');
+    for (var j = 0; j < lines.length; j++) parts.push(lines[j]);
+    parts.push(indent + '</custom-attributes>');
+}
+
+/**
+ * order.xsd price-adjustments block.
+ * @param {string[]} parts - output lines (changed in place)
+ * @param {Object[]} adjustments - canonical price adjustments
+ * @param {string} indent - indent of the <price-adjustments> element
+ */
+function pushPriceAdjustments(parts, adjustments, indent) {
+    if (!adjustments || !adjustments.length) return;
+    var inner = indent + '    ';
+    var field = inner + '    ';
+    parts.push(indent + '<price-adjustments>');
+    for (var i = 0; i < adjustments.length; i++) {
+        var a = adjustments[i];
+        parts.push(inner + '<price-adjustment>');
+        var amountLines = lineItemAmountLines({
+            netPrice:   a.netPrice,
+            taxAmount:  a.taxAmount,
+            grossPrice: a.grossPrice,
+            basePrice:  a.basePrice !== undefined ? a.basePrice : a.grossPrice,
+            taxBasis:   a.taxBasis !== undefined ? a.taxBasis : a.netPrice
+        }, field, a.lineitemText || a.promotionId);
+        for (var l = 0; l < amountLines.length; l++) parts.push(amountLines[l]);
+        parts.push(field + '<promotion-id>' + escapeXml(a.promotionId || 'adjustment') + '</promotion-id>');
+        pushCustomAttributes(parts, a.customAttributes, field);
+        parts.push(inner + '</price-adjustment>');
+    }
+    parts.push(indent + '</price-adjustments>');
 }
 
 /**
@@ -122,29 +173,32 @@ function lineItemDisplayName(li) {
  * @param {string} indent
  * @returns {string}
  */
-function totalsGroupXml(tag, amounts, indent) {
+function totalsGroupXml(tag, amounts, indent, adjustments) {
     var inner = indent + '    ';
-    return [
+    var parts = [
         indent + '<' + tag + '>',
         inner + '<net-price>' + fmtMoney(amounts.net) + '</net-price>',
         inner + '<tax>' + fmtMoney(amounts.tax) + '</tax>',
-        inner + '<gross-price>' + fmtMoney(amounts.gross) + '</gross-price>',
-        indent + '</' + tag + '>'
-    ].join('\n');
+        inner + '<gross-price>' + fmtMoney(amounts.gross) + '</gross-price>'
+    ];
+    pushPriceAdjustments(parts, adjustments, inner);
+    parts.push(indent + '</' + tag + '>');
+    return parts.join('\n');
 }
 
 /**
  * @param {Object} totals
  * @param {string} indent
  * @param {boolean} shipmentLevel
+ * @param {Object[]} [orderAdjustments] - order-level price adjustments (order totals only)
  * @returns {string}
  */
-function totalsBlockXml(totals, indent, shipmentLevel) {
+function totalsBlockXml(totals, indent, shipmentLevel, orderAdjustments) {
     var parts = [indent + '<totals>'];
-    parts.push(totalsGroupXml('merchandize-total', totals.merchandise, indent + '    '));
-    parts.push(totalsGroupXml('adjusted-merchandize-total', totals.merchandise, indent + '    '));
+    parts.push(totalsGroupXml('merchandize-total', totals.merchandise, indent + '    ', orderAdjustments));
+    parts.push(totalsGroupXml('adjusted-merchandize-total', totals.adjustedMerchandise || totals.merchandise, indent + '    '));
     parts.push(totalsGroupXml('shipping-total', totals.shipping, indent + '    '));
-    parts.push(totalsGroupXml('adjusted-shipping-total', totals.shipping, indent + '    '));
+    parts.push(totalsGroupXml('adjusted-shipping-total', totals.adjustedShipping || totals.shipping, indent + '    '));
     if (shipmentLevel) {
         parts.push(totalsGroupXml('shipment-total', totals.shipment, indent + '    '));
     } else {
@@ -190,11 +244,13 @@ function productLineItemsXml(lineItems) {
             parts.push(amountLines[a]);
         }
         parts.push(indent + '<position>' + (i + 1) + '</position>');
-        parts.push(indent + '<product-id>' + escapeXml(li.sku) + '</product-id>');
+        parts.push(indent + '<product-id>' + escapeXml(li.productId || li.sku) + '</product-id>');
         parts.push(indent + '<product-name>' + escapeXml(displayName) + '</product-name>');
         parts.push(indent + '<quantity unit="">' + qty.toFixed(1) + '</quantity>');
         parts.push(indent + '<tax-rate>' + fmtTaxRate(li.taxRate) + '</tax-rate>');
         parts.push(indent + '<shipment-id>' + escapeXml(li.shipmentId) + '</shipment-id>');
+        pushCustomAttributes(parts, li.customAttributes, indent);
+        pushPriceAdjustments(parts, li.priceAdjustments, indent);
         parts.push('            </product-lineitem>');
     }
     parts.push('        </product-lineitems>');
@@ -216,9 +272,11 @@ function shippingLineItemsXml(shippingLineItems) {
         for (var a = 0; a < amountLines.length; a++) {
             parts.push(amountLines[a]);
         }
+        pushPriceAdjustments(parts, li.priceAdjustments, indent);
         parts.push(indent + '<item-id>' + escapeXml(li.itemId || 'STANDARD_SHIPPING') + '</item-id>');
         parts.push(indent + '<shipment-id>' + escapeXml(li.shipmentId) + '</shipment-id>');
         parts.push(indent + '<tax-rate>' + fmtTaxRate(li.taxRate) + '</tax-rate>');
+        pushCustomAttributes(parts, li.customAttributes, indent);
         parts.push('            </shipping-lineitem>');
     }
     parts.push('        </shipping-lineitems>');
@@ -241,6 +299,9 @@ function shipmentsXml(shipments) {
         parts.push('                </status>');
         if (s.shippingMethod) {
             parts.push('                <shipping-method>' + escapeXml(s.shippingMethod) + '</shipping-method>');
+        }
+        if (s.trackingNumber) {
+            parts.push('                <tracking-number>' + escapeXml(s.trackingNumber) + '</tracking-number>');
         }
         parts.push(addressXml('shipping-address', s.shippingAddress, '                '));
         if (s.totals) {
@@ -270,9 +331,16 @@ function paymentsXml(payments) {
         if (p.amount !== undefined && p.amount !== null) {
             parts.push('                <amount>' + fmtMoney(p.amount) + '</amount>');
         }
+        if (p.processorId) {
+            parts.push('                <processor-id>' + escapeXml(p.processorId) + '</processor-id>');
+        }
         if (p.transactionId) {
             parts.push('                <transaction-id>' + escapeXml(p.transactionId) + '</transaction-id>');
         }
+        if (p.transactionType) {
+            parts.push('                <transaction-type>' + escapeXml(p.transactionType) + '</transaction-type>');
+        }
+        pushCustomAttributes(parts, p.customAttributes, '                ');
         parts.push('            </payment>');
     }
     parts.push('        </payments>');
@@ -291,12 +359,14 @@ function prepareOrder(order) {
  * Render an SFCC custom attribute. Collection attributes require repeated
  * <value> children; scalar attributes retain the compact text form.
  * @param {Object} attr
+ * @param {string} [indent] - indent of <custom-attribute>; order level when omitted
  * @returns {string}
  */
-function customAttributeXml(attr) {
+function customAttributeXml(attr, indent) {
     if (!attr || !attr.id || attr.value === '' || attr.value == null) return '';
 
-    var open = '            <custom-attribute attribute-id="' + escapeXml(attr.id) + '">';
+    var pad = indent || '            ';
+    var open = pad + '<custom-attribute attribute-id="' + escapeXml(attr.id) + '">';
     if (!Array.isArray(attr.value)) {
         return open + escapeXml(runtimeAttrMap.formatCustomAttrValue(attr.value)) + '</custom-attribute>';
     }
@@ -306,13 +376,13 @@ function customAttributeXml(attr) {
     for (var i = 0; i < attr.value.length; i++) {
         var value = attr.value[i];
         if (value === null || value === undefined || value === '') continue;
-        values.push('                <value>'
+        values.push(pad + '    <value>'
             + escapeXml(runtimeAttrMap.formatCustomAttrValue(value)) + '</value>');
     }
     if (!values.length) return '';
 
     var parts = [open].concat(values);
-    parts.push('            </custom-attribute>');
+    parts.push(pad + '</custom-attribute>');
     return parts.join('\n');
 }
 
@@ -365,7 +435,7 @@ function generateOrderInnerXml(order) {
         productLineItemsXml(prepared.lineItems),
         shippingLineItemsXml(prepared.shippingLineItems),
         shipmentsXml(prepared.shipments),
-        totalsBlockXml(prepared.totals, '        ', false)
+        totalsBlockXml(prepared.totals, '        ', false, prepared.priceAdjustments)
     ];
     var paymentsBlock = paymentsXml(prepared.payments);
     if (paymentsBlock) {

@@ -3,16 +3,19 @@
 var fullMigrationRunner = require('*/cartridge/scripts/migration/orders/fullMigrationRunner');
 
 /**
- * Run the full order migration pipeline (streaming single-file export).
+ * Run the full order migration pipeline (all batches, XML part files).
  * @param {Object} options
- * @param {number} options.years - 1, 2, or 3
+ * @param {number|string} options.years - 1, 2, 3, or 0 / 'all'
  * @param {number} [options.maxCount] - optional max orders
  * @param {string} [options.orderState] - commercetools orderState filter
  * @param {string} [options.paymentState] - commercetools paymentState filter
  * @returns {Object} migration report
  */
 function run(options) {
-    var result = fullMigrationRunner.runBatch(0, options, true);
+    var result = fullMigrationRunner.runChunk(options, null);
+    while (result.ok && !result.done) {
+        result = fullMigrationRunner.runChunk(options, result.state);
+    }
     if (!result.ok) {
         throw new Error(result.error || 'Order migration failed');
     }

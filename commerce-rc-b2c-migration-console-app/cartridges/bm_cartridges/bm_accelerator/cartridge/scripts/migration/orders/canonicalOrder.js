@@ -17,6 +17,7 @@
  * @property {string} postalCode
  * @property {string} countryCode
  * @property {string} phone
+ * @property {Array<{id: string, value: *}>} [customAttributes] - address custom-attributes
  */
 
 /**
@@ -38,6 +39,22 @@
  * @property {number} grossPrice
  * @property {number} netPrice
  * @property {string} currency
+ * @property {number} [taxRate] - source tax rate; computed from amounts when absent
+ * @property {CanonicalPriceAdjustment[]} [priceAdjustments] - amounts above are before these
+ * @property {Array<{id: string, value: *}>} [customAttributes] - product-lineitem custom-attributes
+ */
+
+/**
+ * order.xsd PriceAdjustment (negative amounts reduce the total).
+ * @typedef {Object} CanonicalPriceAdjustment
+ * @property {string} promotionId
+ * @property {string} lineitemText
+ * @property {number} netPrice
+ * @property {number} taxAmount
+ * @property {number} grossPrice
+ * @property {number} [basePrice]
+ * @property {number} [taxBasis]
+ * @property {Array<{id: string, value: *}>} [customAttributes]
  */
 
 /**
@@ -60,6 +77,7 @@
  * @property {string} id
  * @property {string} status
  * @property {string} shippingMethod
+ * @property {string} [trackingNumber]
  * @property {CanonicalAddress} shippingAddress
  */
 
@@ -74,6 +92,7 @@
  * @property {CanonicalLineItem[]} lineItems
  * @property {CanonicalTax[]} taxes
  * @property {CanonicalDiscount[]} discounts
+ * @property {CanonicalPriceAdjustment[]} priceAdjustments - order-level
  * @property {CanonicalShipment[]} shipments
  * @property {string} status
  * @property {string} paymentStatus
@@ -108,6 +127,8 @@ function createEmpty() {
         shippingLineItems: [],
         taxes:           [],
         discounts:       [],
+        // order-level price adjustments (order.xsd totals/merchandize-total/price-adjustments)
+        priceAdjustments: [],
         shipments:       [],
         payments:        [],
         customAttributes: [],

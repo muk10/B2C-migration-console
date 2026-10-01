@@ -181,6 +181,7 @@ function mergeIfEmpty(record, system, keyMap) {
 module.exports = {
     MODULE_TASK:           MODULE_TASK,
     taskFor:               taskFor,
+    readMap:               readMap,
     isSystemField:         isSystemField,
     apply:                 apply,
     applyEntries:          applyEntries,

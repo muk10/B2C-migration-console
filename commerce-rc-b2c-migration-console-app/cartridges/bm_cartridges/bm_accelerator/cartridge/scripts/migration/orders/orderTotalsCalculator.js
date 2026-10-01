@@ -35,6 +35,45 @@ function moneyBlock(net, tax, gross) {
 }
 
 /**
+ * Sum of money blocks.
+ * @param {...Object} blocks - { net, tax, gross }
+ * @returns {Object}
+ */
+function addBlocks() {
+    var net = 0;
+    var tax = 0;
+    var gross = 0;
+    for (var i = 0; i < arguments.length; i++) {
+        net += arguments[i].net;
+        tax += arguments[i].tax;
+        gross += arguments[i].gross;
+    }
+    return { net: net, tax: tax, gross: gross };
+}
+
+/**
+ * @param {Object[]} adjustments - price adjustments
+ * @returns {Object} their net/tax/gross total
+ */
+function adjustmentBlock(adjustments) {
+    var list = adjustments || [];
+    return moneyBlock(sumField(list, 'netPrice'), sumField(list, 'taxAmount'), sumField(list, 'grossPrice'));
+}
+
+/**
+ * Total of the price adjustments on line items.
+ * @param {Object[]} items - product or shipping line items
+ * @returns {Object}
+ */
+function lineAdjustmentBlock(items) {
+    var all = [];
+    for (var i = 0; i < items.length; i++) {
+        all = all.concat(items[i].priceAdjustments || []);
+    }
+    return adjustmentBlock(all);
+}
+
+/**
  * Compute tax rate from net and tax amounts.
  * @param {number} net
  * @param {number} tax
@@ -150,20 +189,23 @@ function reconcileOrder(order) {
         sumField(shippingLineItems, 'taxAmount'),
         sumField(shippingLineItems, 'grossPrice')
     );
-    var orderTotal = moneyBlock(
-        merchandise.net + shipping.net,
-        merchandise.tax + shipping.tax,
-        merchandise.gross + shipping.gross
-    );
+    // Line amounts are before price adjustments; adjusted totals add item, order-level and
+    // shipping adjustments (equal to the plain totals when there are none).
+    var adjustedMerchandise = addBlocks(merchandise, lineAdjustmentBlock(lineItems),
+        adjustmentBlock(order.priceAdjustments));
+    var adjustedShipping = addBlocks(shipping, lineAdjustmentBlock(shippingLineItems));
+    var orderTotal = addBlocks(adjustedMerchandise, adjustedShipping);
 
     order.merchandiseTotal = merchandise.net;
-    order.shippingTotal    = shipping.gross;
+    order.shippingTotal    = adjustedShipping.gross;
     order.taxTotal         = orderTotal.tax;
     order.orderTotal       = orderTotal.gross;
     order.totals = {
-        merchandise: merchandise,
-        shipping:    shipping,
-        order:       orderTotal
+        merchandise:         merchandise,
+        adjustedMerchandise: adjustedMerchandise,
+        shipping:            shipping,
+        adjustedShipping:    adjustedShipping,
+        order:               orderTotal
     };
 
     for (var k = 0; k < shipments.length; k++) {
@@ -191,16 +233,16 @@ function reconcileOrder(order) {
             sumField(shipmentShipping, 'taxAmount'),
             sumField(shipmentShipping, 'grossPrice')
         );
-        var shipmentTotal = moneyBlock(
-            shipmentMerch.net + shipmentShip.net,
-            shipmentMerch.tax + shipmentShip.tax,
-            shipmentMerch.gross + shipmentShip.gross
-        );
+        var shipmentAdjMerch = addBlocks(shipmentMerch, lineAdjustmentBlock(shipmentProducts));
+        var shipmentAdjShip = addBlocks(shipmentShip, lineAdjustmentBlock(shipmentShipping));
+        var shipmentTotal = addBlocks(shipmentAdjMerch, shipmentAdjShip);
 
         shipments[k].totals = {
-            merchandise: shipmentMerch,
-            shipping:    shipmentShip,
-            shipment:    shipmentTotal
+            merchandise:         shipmentMerch,
+            adjustedMerchandise: shipmentAdjMerch,
+            shipping:            shipmentShip,
+            adjustedShipping:    shipmentAdjShip,
+            shipment:            shipmentTotal
         };
     }
 
@@ -221,6 +263,7 @@ module.exports = {
     reconcileOrder: reconcileOrder,
     padShipmentId:  padShipmentId,
     moneyBlock:     moneyBlock,
+    addBlocks:      addBlocks,
     taxRate:        taxRate,
     sumField:       sumField
 };

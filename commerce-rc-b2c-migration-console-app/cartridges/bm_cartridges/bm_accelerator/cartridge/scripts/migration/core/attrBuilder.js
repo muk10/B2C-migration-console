@@ -13,6 +13,11 @@ var NO_SCOPE_OBJECT_TYPES = {
     Customer: true,
     Profile: true,
     Order: true,
+    // order parts written by the order migration (custom-attributes in order.xsd)
+    ProductLineItem: true,
+    OrderAddress: true,
+    OrderPaymentInstrument: true,
+    PriceAdjustment: true,
     PriceBook: true,
     ProductInventoryList: true,
     ProductInventoryRecord: true

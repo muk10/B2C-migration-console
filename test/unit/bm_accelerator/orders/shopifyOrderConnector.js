@@ -61,4 +61,41 @@ describe('shopifyOrderConnector', function () {
 
         assert.isFalse(called);
     });
+
+    describe('all orders date range', function () {
+        /**
+         * @param {string[]} urls - collects every requested URL
+         * @returns {Object} connector whose API returns one order per request
+         */
+        function load(urls) {
+            return proxyquire(connectorPath, {
+                '*/cartridge/scripts/migration/core/shopifyApi': {
+                    adminBase: function () { return 'https://shop/admin'; },
+                    authHeaders: function () { return {}; },
+                    send: function (method, url) {
+                        urls.push(url);
+                        return { status: 200, data: { orders: [{ id: urls.length }] }, link: '' };
+                    },
+                    parseNextPageInfo: function () { return null; },
+                    graphql: function () { return { nodes: [] }; }
+                }
+            });
+        }
+
+        it('does not reuse the 1-year count for all orders', function () {
+            var urls = [];
+            var connector = load(urls);
+            connector.countOrders({ years: 1 });
+            connector.countOrders({ years: 'all' });
+            assert.lengthOf(urls, 2);
+            assert.include(urls[0], 'created_at_min=');
+            assert.notInclude(urls[1], 'created_at_min=');
+        });
+
+        it('keeps no lower bound when the runner passes an empty sinceDate', function () {
+            var urls = [];
+            load(urls).fetchOrdersPage('t', { years: 0, sinceDate: '', offset: 0, limit: 10 });
+            urls.forEach(function (u) { assert.notInclude(u, 'created_at_min='); });
+        });
+    });
 });

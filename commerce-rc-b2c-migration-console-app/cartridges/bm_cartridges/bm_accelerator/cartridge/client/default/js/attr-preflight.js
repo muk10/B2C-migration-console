@@ -1232,6 +1232,8 @@
                 localizable: !!(orig.localizable || orig.scope === 'localized'),
                 siteSpecific: !!orig.siteSpecific,
                 sourceLocalizable: !!orig.sourceLocalizable,
+                // order parts (line item, address, …) are created on their own SFCC object type
+                objectType: orig.objectType,
                 idx: idx
             });
         }

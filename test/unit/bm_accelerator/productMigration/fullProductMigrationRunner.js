@@ -115,6 +115,10 @@ describe('fullProductMigrationRunner local IMPEX accumulation', function () {
                 },
                 fetchCategoryIdMap: function () { return null; }
             },
+            // bundle member lookup (fetchBundleMembers): these test products have no bundle lines
+            '*/cartridge/scripts/migration/productMigration/productTransformer': {
+                bundleMemberIds: function () { return []; }
+            },
             '*/cartridge/scripts/migration/productMigration/productXmlBuilder': {
                 XML_FOOTER: '</catalog>\n',
                 xmlHeader: function (catalogId, imageBaseUrl) {
