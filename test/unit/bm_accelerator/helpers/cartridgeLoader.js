@@ -10,6 +10,7 @@ var fs     = require('fs');
 
 var CARTRIDGE_ROOT = path.resolve(__dirname, '../../../../commerce-rc-b2c-migration-console-app/cartridges/bm_cartridges/bm_accelerator/cartridge');
 var MOCK_ROOT      = path.resolve(__dirname, '../mocks');
+var AUTO_DW_MOCK   = path.join(MOCK_ROOT, '_autoDw.js');
 var originalResolve = Module._resolveFilename;
 var installed = false;
 
@@ -23,6 +24,9 @@ function installCartridgeResolver() {
             if (fs.existsSync(mockPath)) {
                 return originalResolve.call(this, mockPath, parent, isMain, options);
             }
+            // No dedicated mock for this dw/* API — fall back to a permissive
+            // auto-stub so the module can load. Dedicated mocks above still win.
+            return originalResolve.call(this, AUTO_DW_MOCK, parent, isMain, options);
         }
         if (request.indexOf('*/cartridge/') === 0) {
             var mapped = path.join(CARTRIDGE_ROOT, request.replace('*/cartridge/', ''));

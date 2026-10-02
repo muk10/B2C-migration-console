@@ -26,6 +26,17 @@ function buildDescription(exportKey, supplyChannelId) {
     return desc;
 }
 
+/**
+ * Build a SKU -> SFCC product-id resolver for the current platform. CT inventory
+ * entries carry only a SKU, so a product scan maps them to the migrated product-id;
+ * other platforms already carry a usable product-id, so no resolver is needed.
+ * @returns {function(string): string|null}
+ */
+function buildProductIdResolver() {
+    if (registry.getPlatformId() !== 'commercetools') return null;
+    return require('*/cartridge/scripts/migration/inventoryMigration/ctpInventoryProductIdResolver').build();
+}
+
 function closeWriterSafe(writer) {
     if (writer) {
         try { writer.close(); } catch (e) { /* ignore */ }
@@ -131,6 +142,8 @@ function runSingleFile(listId, supplyChannelId, exportKey, fileName, aggregate) 
 
         writer = new FileWriter(outFile, 'UTF-8');
 
+        var resolveProductId = buildProductIdResolver();
+
         do {
             var batch = fetcher.fetchBatch(offset, BATCH_SIZE, channelId, sortField);
             results   = batch.results || [];
@@ -152,7 +165,7 @@ function runSingleFile(listId, supplyChannelId, exportKey, fileName, aggregate) 
             var i;
             for (i = 0; i < results.length; i++) {
                 try {
-                    var rec = transformer.transformEntry(results[i]);
+                    var rec = transformer.transformEntry(results[i], resolveProductId);
                     if (!rec) {
                         failed++;
                         continue;
@@ -263,9 +276,10 @@ function runMultiFileBatch(offset, listId, supplyChannelId, exportKey, fileName,
         };
     }
 
+    var resolveProductId = buildProductIdResolver();
     var records = aggregate
-        ? transformer.aggregateBySku(entries)
-        : entries.map(function (e) { return transformer.transformEntry(e); }).filter(function (r) { return !!r; });
+        ? transformer.aggregateBySku(entries, resolveProductId)
+        : entries.map(function (e) { return transformer.transformEntry(e, resolveProductId); }).filter(function (r) { return !!r; });
 
     var upload = uploadXml(records, listId, exportKey, channelId || null, fileName, offset);
     if (!upload.ok) {

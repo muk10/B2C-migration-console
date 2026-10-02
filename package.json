@@ -9,7 +9,8 @@
   "scripts": {
     "watch:scss": "sass --watch commerce-rc-b2c-migration-console-app/cartridges/bm_cartridges/bm_accelerator/cartridge/client/default/scss/accelerator-migration.scss:commerce-rc-b2c-migration-console-app/cartridges/bm_cartridges/bm_accelerator/cartridge/static/default/css/accelerator-migration.css",
     "dev": "npm run compile:scss",
-    "test": "sgmf-scripts --test test/unit/bm_accelerator/**/*.js test/unit/app_custom_cms/**/*.js",
+    "test": "npm run test:acc && npm run test:cms",
+    "test:acc": "mocha --require ./test/unit/bm_accelerator/helpers/mochaBootstrap.js --ignore \"test/unit/bm_accelerator/mocks/**\" --ignore \"test/unit/bm_accelerator/fixtures/**\" --ignore \"test/unit/bm_accelerator/helpers/**\" \"test/unit/bm_accelerator/**/*.js\"",
     "test:cms": "mocha test/unit/app_custom_cms/**/*.js",
     "cover": "sgmf-scripts --cover 'test/unit'",
     "compile:scss": "node scripts/compile-accelerator-scss.js",

@@ -49,27 +49,46 @@ function getCount() {
     return res.data.total || 0;
 }
 
+// Default expansions for full product migration (category assignment needs these).
+// The price book and inventory flows use fetchBatchLean instead — they only read
+// variants and prices, and expanding categories[*] at limit=500 overflows the Service
+// Framework's 10 MB in-memory response cap (surfaces as a synthesized "500").
+var DEFAULT_EXPAND = ['productType', 'masterData.current.categories[*]'];
+
 /**
  * Fetch one page of products from CT.
- * @param {number} offset
+ *
  * If SFCC rejects a response at its 10 MB in-memory limit, retry the same offset
  * with a smaller page. The caller advances by results.length, so no products are
  * skipped when a page has to be reduced.
  *
+ * @param {number} offset
  * @param {number} limit  - requested page size, max 500
+ * @param {Object} [options]
+ * @param {Array<string>} [options.expand] - expand params; pass [] for none. Omit for DEFAULT_EXPAND.
+ * @param {boolean} [options.withTotal] - include total (default true)
  * @returns {{ results: Array, total: number, pageSize: number }}
  */
-function fetchBatch(offset, limit) {
+function fetchBatch(offset, limit, options) {
     var c         = cfg.ctp;
     var tok       = getToken();
+    var opts      = options || {};
+    var expand    = opts.expand ? opts.expand : DEFAULT_EXPAND;
+    var withTotal = opts.withTotal !== false;
     var requested = parseInt(limit, 10) || DEFAULT_BATCH_SIZE;
     var pageSize  = Math.min(Math.max(requested, 1), MAX_BATCH_SIZE);
     var start     = Math.max(parseInt(offset, 10) || 0, 0);
 
     while (pageSize >= 1) {
-        var qs = '?limit=' + pageSize + '&offset=' + start
-            + '&sort=id+asc&withTotal=true'
-            + '&expand=productType&expand=masterData.current.categories[*]';
+        var qs = '?limit=' + pageSize + '&offset=' + start + '&sort=id+asc';
+        if (withTotal) {
+            qs += '&withTotal=true';
+        }
+        var ei;
+        for (ei = 0; ei < expand.length; ei++) {
+            qs += '&expand=' + expand[ei];
+        }
+
         var res;
         var responseTooLarge = false;
 
@@ -108,6 +127,76 @@ function fetchBatch(offset, limit) {
     }
 
     throw new Error('CT products fetch failed: no valid page size was available');
+}
+
+/**
+ * CT product-type ID → product-type name, for every product type in the project.
+ * A project has a handful of product types, so a plain object is safe here.
+ * @returns {Object.<string,string>}
+ */
+function fetchProductTypeNames() {
+    var c      = cfg.ctp;
+    var tok    = getToken();
+    var names  = {};
+    var limit  = 500;
+    var offset = 0;
+    var total  = null;
+
+    do {
+        var res = http.get(
+            c.apiUrl + '/' + c.projectKey + '/product-types?limit=' + limit
+                + '&offset=' + offset + '&withTotal=true',
+            { Authorization: 'Bearer ' + tok, 'Content-Type': 'application/json' }
+        );
+        if (res.status !== 200) {
+            throw new Error('CT product types fetch failed (' + res.status + ')');
+        }
+        if (total === null) total = res.data.total || 0;
+        var results = res.data.results || [];
+        var i;
+        for (i = 0; i < results.length; i++) {
+            if (results[i] && results[i].id) names[results[i].id] = results[i].name || '';
+        }
+        offset += limit;
+    } while (offset < total);
+
+    return names;
+}
+
+/**
+ * Give each unexpanded product a minimal productType.obj ({ name }) so
+ * productTransformer.detectProductKind classifies bundles and sets exactly as the
+ * product migration does with the full productType expansion.
+ * @param {Array} products - raw CT products (mutated)
+ * @param {Object.<string,string>} typeNames - fetchProductTypeNames result
+ * @returns {Array} the same products
+ */
+function attachProductTypeNames(products, typeNames) {
+    var i;
+    for (i = 0; i < (products || []).length; i++) {
+        var pt = products[i] && products[i].productType;
+        if (pt && !pt.obj && pt.id && Object.prototype.hasOwnProperty.call(typeNames, pt.id)) {
+            pt.obj = { id: pt.id, name: typeNames[pt.id] };
+        }
+    }
+    return products;
+}
+
+var productTypeNamesCache = null;
+
+/**
+ * Fetch one page of products without expansions (keeps large pages under SFCC's
+ * 10 MB response cap) but with product-type names attached, so bundle/set detection
+ * still works. For flows that read variants and prices only (price book, inventory).
+ * @param {number} offset
+ * @param {number} limit
+ * @returns {{ results: Array, total: number, pageSize: number }}
+ */
+function fetchBatchLean(offset, limit) {
+    if (!productTypeNamesCache) productTypeNamesCache = fetchProductTypeNames();
+    var batch = fetchBatch(offset, limit, { expand: [] });
+    attachProductTypeNames(batch.results, productTypeNamesCache);
+    return batch;
 }
 
 /**
@@ -166,6 +255,9 @@ function fetchCategoryIdMap() {
 module.exports = {
     getCount: getCount,
     fetchBatch: fetchBatch,
+    fetchBatchLean: fetchBatchLean,
+    fetchProductTypeNames: fetchProductTypeNames,
+    attachProductTypeNames: attachProductTypeNames,
     fetchById: fetchById,
     fetchCategoryIdMap: fetchCategoryIdMap
 };
