@@ -50,8 +50,8 @@ function getCount() {
 }
 
 // Default expansions for full product migration (category assignment needs these).
-// The price book and inventory flows use fetchBatchLean instead — they only read
-// variants and prices, and expanding categories[*] at limit=500 overflows the Service
+// The price book flow uses fetchBatchLean instead — it only reads variants and
+// prices, and expanding categories[*] at limit=500 overflows the Service
 // Framework's 10 MB in-memory response cap (surfaces as a synthesized "500").
 var DEFAULT_EXPAND = ['productType', 'masterData.current.categories[*]'];
 
@@ -187,7 +187,7 @@ var productTypeNamesCache = null;
 /**
  * Fetch one page of products without expansions (keeps large pages under SFCC's
  * 10 MB response cap) but with product-type names attached, so bundle/set detection
- * still works. For flows that read variants and prices only (price book, inventory).
+ * still works. For flows that read variants and prices only (price book).
  * @param {number} offset
  * @param {number} limit
  * @returns {{ results: Array, total: number, pageSize: number }}

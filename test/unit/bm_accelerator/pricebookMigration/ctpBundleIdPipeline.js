@@ -3,9 +3,9 @@
 /* eslint-env mocha */
 
 /**
- * End-to-end check of the commercetools price book and inventory flows for bundles:
+ * End-to-end check of the commercetools price book flow for bundles:
  * lean CT product pages (productType is an unexpanded reference) -> product-type names
- * attached -> price / inventory records -> import XML. Mirrors the CHF sandbox case where
+ * attached -> price records -> import XML. Mirrors the CHF sandbox case where
  * every bundle was priced under a non-existent {bundleId}-{n}.
  */
 
@@ -95,14 +95,6 @@ function ctHttp(requests) {
     };
 }
 
-/** Minimal dw.util.HashMap for the inventory resolver. */
-function HashMap() {
-    this.m = {};
-}
-HashMap.prototype.put = function (k, v) { this.m[k] = v; };
-HashMap.prototype.get = function (k) { return Object.prototype.hasOwnProperty.call(this.m, k) ? this.m[k] : null; };
-HashMap.prototype.containsKey = function (k) { return Object.prototype.hasOwnProperty.call(this.m, k); };
-
 /**
  * @param {Array} requests - receives every GET url
  * @returns {Object} ctpProductFetcher wired to the fake CT API
@@ -114,8 +106,7 @@ function loadProductFetcher(requests) {
             ctp: { authUrl: 'https://auth.test', apiUrl: 'https://api.test', projectKey: 'p', clientId: 'c', clientSecret: 's' }
         },
         'dw/crypto/Encoding': { toBase64: function () { return 'x'; } },
-        'dw/util/Bytes': function (v) { return v; },
-        'dw/util/HashMap': HashMap
+        'dw/util/Bytes': function (v) { return v; }
     });
 }
 
@@ -174,32 +165,5 @@ describe('commercetools bundle product-ids, end to end', function () {
             assert.notInclude(u, 'expand=');
         });
         assert.isTrue(requests.some(function (u) { return u.indexOf('/product-types?') !== -1; }));
-    });
-
-    it('maps bundle inventory to the plain bundle id and drops non-master bundle variants', function () {
-        var resolverModule = proxyquire(SCRIPTS + 'inventoryMigration/ctpInventoryProductIdResolver.js', {
-            '*/cartridge/scripts/migration/productMigration/ctpProductFetcher': productFetcher,
-            '*/cartridge/scripts/migration/productMigration/productTransformer':
-                loader.requireCartridge('productMigration/productTransformer'),
-            'dw/util/HashMap': HashMap
-        });
-        var transformer = loader.requireCartridge('inventoryMigration/inventoryTransformer');
-
-        var records = transformer.aggregateBySku([
-            { sku: 'gift-box', quantityOnStock: 5 },
-            { sku: 'cubes-bag', quantityOnStock: 2 },
-            { sku: '9139test', quantityOnStock: 7 },
-            { sku: 'memberless-bundle', quantityOnStock: 1 },
-            { sku: 'candy-3', quantityOnStock: 4 }
-        ], resolverModule.build());
-
-        var candy = sfccId('bbbbbbbb-0000-0000-0000-000000000002');
-        assert.deepEqual(records.map(function (r) { return r.productId; }), [
-            sfccId('ecbfea07-e6c9-4d49-9496-8abd6c6eb568'),
-            sfccId('41cbb1eb-9041-48dd-b158-f5cf4d0ecb35'),
-            // only the product-type name marks this one as a bundle
-            sfccId('aaaaaaaa-0000-0000-0000-000000000001'),
-            candy + '-2'
-        ]);
     });
 });

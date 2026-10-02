@@ -913,8 +913,8 @@ function transformProduct(ctpProduct) {
 
 /**
  * Map each priced CT variant to the exact SFCC product-id the product migration
- * emits, WITHOUT running the full transform. Used by the price book and inventory
- * migrations so a price/stock row lands on a product that actually exists in the
+ * emits, WITHOUT running the full transform. Used by the price book migration so a
+ * price row lands on a product that actually exists in the
  * catalog (the migration exports variants as {masterId}-{position}, never as the SKU).
  *
  * Mirrors transformProduct's id assignment 1:1:

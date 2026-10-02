@@ -88,28 +88,15 @@ function formatCustomFieldValue(val) {
 /**
  * Transform a single CT inventory entry into a canonical record.
  * @param {Object} entry
- * @param {function(string): string} [resolveProductId] - map a SKU to its SFCC
- *   product-id. CT inventory entries carry only a SKU, so without this the record
- *   would key on the SKU (a product that does not exist in the catalog). When given,
- *   a SKU with no migrated product is skipped (returns null).
  * @returns {Object|null}
  */
-function transformEntry(entry, resolveProductId) {
+function transformEntry(entry) {
     if (!entry) return null;
-    var sku = entry.sku != null ? String(entry.sku).trim() : '';
-    if (!sku && entry.productId != null) sku = String(entry.productId).trim();
-    if (!sku) return null;
-
-    var productId;
-    if (typeof resolveProductId === 'function') {
-        productId = resolveProductId(sku);
-        if (!productId) return null;
-    } else {
-        productId = entry.productId || sku;
-    }
+    var productId = entry.productId || entry.sku;
+    if (!productId) return null;
 
     var record = {
-        sku:                    sku,
+        sku:                    productId,
         productId:              productId,
         allocation:             getStockOnHand(entry),
         ats:                    getAvailableToSell(entry),
@@ -139,26 +126,24 @@ function transformEntry(entry, resolveProductId) {
 /**
  * Merge duplicate SKUs in a batch (e.g. multiple supply channels) by summing quantity.
  * @param {Array} entries - raw CT inventory entries
- * @param {function(string): string} [resolveProductId] - see transformEntry
  * @returns {Array}
  */
-function aggregateBySku(entries, resolveProductId) {
+function aggregateBySku(entries) {
     var map = {};
     var out = [];
 
     for (var i = 0; i < entries.length; i++) {
-        var rec = transformEntry(entries[i], resolveProductId);
+        var rec = transformEntry(entries[i]);
         if (!rec) continue;
 
-        var key = rec.productId || rec.sku;
-        if (map[key]) {
-            map[key].allocation += rec.allocation;
-            map[key].ats        += rec.ats;
-            if (rec.allocationTimestamp > map[key].allocationTimestamp) {
-                map[key].allocationTimestamp = rec.allocationTimestamp;
+        if (map[rec.sku]) {
+            map[rec.sku].allocation += rec.allocation;
+            map[rec.sku].ats        += rec.ats;
+            if (rec.allocationTimestamp > map[rec.sku].allocationTimestamp) {
+                map[rec.sku].allocationTimestamp = rec.allocationTimestamp;
             }
         } else {
-            map[key] = rec;
+            map[rec.sku] = rec;
             out.push(rec);
         }
     }
