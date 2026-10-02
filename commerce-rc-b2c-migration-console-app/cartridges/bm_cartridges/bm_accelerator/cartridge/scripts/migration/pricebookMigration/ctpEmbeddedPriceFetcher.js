@@ -1,16 +1,33 @@
 'use strict';
 
 var productFetcher = require('*/cartridge/scripts/migration/productMigration/ctpProductFetcher');
-var standalone     = require('*/cartridge/scripts/migration/pricebookMigration/ctpPricebookFetcher');
 var extractor      = require('*/cartridge/scripts/migration/pricebookMigration/embeddedPriceExtractor');
 
-var DISC_PAGE = 500;
+var DISC_PAGE = 250;
+
+// Dominant country per currency, persisted by discovery for the build step to reuse
+// when a variant has only country-scoped prices (issue 4).
+var DOMINANT_COUNTRY_KEY = 'pbEmbDomCountry';
+
+/**
+ * Fetch a page of CT products for price extraction. Uses the lean fetch (no
+ * category expansion, which overflows the Service Framework's 10 MB cap) with
+ * product-type names attached: bundle/set detection needs them, otherwise a bundle
+ * is priced under a non-existent {bundleId}-{n} instead of its plain product-id.
+ * fetchBatch already shrinks the page itself when a response is too large.
+ * @param {number} offset
+ * @param {number} limit
+ * @returns {{ results: Array, total: number }}
+ */
+function fetchProductsLean(offset, limit) {
+    return productFetcher.fetchBatchLean(offset, limit || DISC_PAGE);
+}
+
 var SESS = {
-    agg:      'pbDisc_emb_agg',
-    ch:       'pbDisc_emb_ch',
-    channels: 'pbDisc_emb_channels',
-    offset:   'pbDisc_emb_offset',
-    total:    'pbDisc_emb_total'
+    agg:     'pbDisc_emb_agg',
+    country: 'pbDisc_emb_country',
+    offset:  'pbDisc_emb_offset',
+    total:   'pbDisc_emb_total'
 };
 
 function exportKeySafe(key) {
@@ -29,26 +46,31 @@ function writeSessionMap(key, obj) {
     session.custom[key] = JSON.stringify(obj || {});
 }
 
-function channelsByIdFromList(channels) {
-    var map = {};
-    var i;
-    for (i = 0; i < channels.length; i++) {
-        map[channels[i].id] = channels[i];
+function readDominantCountryMap() {
+    try {
+        return JSON.parse(String(session.custom[DOMINANT_COUNTRY_KEY] || '{}'));
+    } catch (e) {
+        return {};
     }
-    return map;
 }
 
-function buildTargetsFromMaps(aggByCurrency, byCurChannel, channelsById) {
+/**
+ * One full price book per currency. Channel/warehouse books are intentionally not
+ * produced (issue 8): channel prices never become SFCC list prices.
+ * @param {Object} aggByCurrency - { currency: pricedVariantCount }
+ * @returns {Array}
+ */
+function buildTargetsFromMaps(aggByCurrency) {
     var targets    = [];
     var currencies = Object.keys(aggByCurrency).sort();
     var ci;
-
     for (ci = 0; ci < currencies.length; ci++) {
         var currency = currencies[ci];
         targets.push({
             exportKey:  'emb_agg_' + exportKeySafe(currency),
-            label:      currency + ' — All channels',
-            subLabel:   'Embedded variant prices aggregated per SKU across channels',
+            label:      currency + ' — Full price book',
+            subLabel:   'Every priced variant in ' + currency
+                + ' (base price; customer-group, channel and expired prices excluded)',
             currency:   currency,
             channelId:  'all',
             channelKey: '',
@@ -57,28 +79,6 @@ function buildTargetsFromMaps(aggByCurrency, byCurChannel, channelsById) {
             source:     'embedded'
         });
     }
-
-    var mapKeys = Object.keys(byCurChannel).sort();
-    var ki;
-    for (ki = 0; ki < mapKeys.length; ki++) {
-        var parts  = mapKeys[ki].split('::');
-        var cur2   = parts[0];
-        var chId2  = parts[1];
-        var chInfo = channelsById[chId2] || { id: chId2, key: chId2, name: chId2 };
-        var chKey  = exportKeySafe(chInfo.key || chId2);
-        targets.push({
-            exportKey:  'emb_' + exportKeySafe(cur2) + '_ch_' + chKey,
-            label:      cur2 + ' — ' + (chInfo.name || chInfo.key),
-            subLabel:   'Embedded prices — channel: ' + (chInfo.key || chId2),
-            currency:   cur2,
-            channelId:  chId2,
-            channelKey: chInfo.key || '',
-            aggregate:  false,
-            priceCount: byCurChannel[mapKeys[ki]],
-            source:     'embedded'
-        });
-    }
-
     return targets;
 }
 
@@ -86,8 +86,7 @@ function clearEmbeddedDiscovery() {
     session.custom[SESS.offset] = '0';
     session.custom[SESS.total]  = '';
     writeSessionMap(SESS.agg, {});
-    writeSessionMap(SESS.ch, {});
-    session.custom[SESS.channels] = '';
+    writeSessionMap(SESS.country, {});
 }
 
 /**
@@ -99,28 +98,26 @@ function clearEmbeddedDiscovery() {
 function discoverEmbeddedStep(offset, reset) {
     if (reset || offset === 0) {
         clearEmbeddedDiscovery();
-        var channels = standalone.fetchDistributionChannels();
-        session.custom[SESS.channels] = JSON.stringify(channels);
     }
 
     var agg       = readSessionMap(SESS.agg);
-    var byChannel = readSessionMap(SESS.ch);
+    var countryBy = readSessionMap(SESS.country);
     var curOffset = parseInt(session.custom[SESS.offset] || '0', 10);
     if (offset > 0) {
         curOffset = offset;
     }
 
-    var batch = productFetcher.fetchBatch(curOffset, DISC_PAGE);
+    var batch = fetchProductsLean(curOffset, DISC_PAGE);
     if (!session.custom[SESS.total]) {
         session.custom[SESS.total] = String(batch.total || 0);
     }
 
     var i;
     for (i = 0; i < batch.results.length; i++) {
-        extractor.scanProductForDiscovery(batch.results[i], agg, byChannel);
+        extractor.scanProductForDiscovery(batch.results[i], agg, countryBy);
     }
     writeSessionMap(SESS.agg, agg);
-    writeSessionMap(SESS.ch, byChannel);
+    writeSessionMap(SESS.country, countryBy);
 
     var total      = parseInt(session.custom[SESS.total], 10) || 0;
     var nextOffset = curOffset + batch.results.length;
@@ -138,13 +135,11 @@ function discoverEmbeddedStep(offset, reset) {
         };
     }
 
-    var channelList = [];
-    try {
-        channelList = JSON.parse(session.custom[SESS.channels] || '[]');
-    } catch (e2) {
-        channelList = [];
-    }
+    // Persist the dominant country per currency so the build step selects the same
+    // country for country-only variants (issue 4).
+    session.custom[DOMINANT_COUNTRY_KEY] = JSON.stringify(extractor.dominantCountryByCurrency(countryBy));
 
+    var targets = buildTargetsFromMaps(agg);
     clearEmbeddedDiscovery();
     return {
         done:         true,
@@ -152,12 +147,12 @@ function discoverEmbeddedStep(offset, reset) {
         scanned:      total,
         total:        total,
         productTotal: total,
-        embedded:     buildTargetsFromMaps(agg, byChannel, channelsByIdFromList(channelList))
+        embedded:     targets
     };
 }
 
 /**
- * Scan all products and discover embedded pricebook targets by currency/channel.
+ * Scan all products and discover embedded pricebook targets (one per currency).
  * @returns {Array}
  */
 function discoverEmbeddedPricebookTargets() {
@@ -169,7 +164,7 @@ function discoverEmbeddedPricebookTargets() {
 }
 
 /**
- * Count embedded prices matching a target by scanning all products.
+ * Count list-price records for a currency by scanning all products.
  * @param {string} currency
  * @param {string} [channelId]
  * @param {boolean} [aggregate]
@@ -178,30 +173,29 @@ function discoverEmbeddedPricebookTargets() {
 function getPriceCount(currency, channelId, aggregate) {
     var total  = 0;
     var offset = 0;
-    var limit  = 500;
+    var grand  = null;
     var batch;
-    var chId   = (channelId && channelId !== 'all') ? channelId : 'all';
+    var opts   = { dominantCountry: readDominantCountryMap()[currency] || null, nowMs: Date.now() };
 
+    // Loop on offset vs. total, not page===limit: fetchProductsLean may return a
+    // smaller page than requested when it halves to stay under the 10 MB cap.
     do {
-        batch = productFetcher.fetchBatch(offset, limit);
+        batch = fetchProductsLean(offset, DISC_PAGE);
+        if (grand === null) grand = batch.total || 0;
         var i;
         for (i = 0; i < batch.results.length; i++) {
-            var records = extractor.extractRecordsFromProduct(
-                batch.results[i], currency, chId, aggregate
-            );
-            total += records.length;
+            total += extractor.extractRecordsFromProduct(
+                batch.results[i], currency, channelId, aggregate, opts
+            ).length;
         }
         offset += batch.results.length;
-    // The shared product fetcher can reduce a page to stay below SFCC's HTTP
-    // response-size limit, so completion must use the returned total rather
-    // than assume every non-final page has the requested length.
-    } while (batch.results.length > 0 && offset < batch.total);
+    } while (batch.results.length > 0 && offset < grand);
 
     return total;
 }
 
 /**
- * Fetch one batch of products and extract price records for a target.
+ * Fetch one batch of products and extract list-price records for a currency.
  * @param {number} offset - product offset
  * @param {number} limit
  * @param {string} currency
@@ -210,15 +204,15 @@ function getPriceCount(currency, channelId, aggregate) {
  * @returns {{ records: Array, total: number, nextOffset: number, done: boolean }}
  */
 function fetchPriceRecordsBatch(offset, limit, currency, channelId, aggregate) {
-    var batch = productFetcher.fetchBatch(offset, limit || 500);
-    var total = batch.total;
+    var batch   = fetchProductsLean(offset, limit || DISC_PAGE);
+    var total   = batch.total;
     var records = [];
+    var opts    = { dominantCountry: readDominantCountryMap()[currency] || null, nowMs: Date.now() };
     var i;
-    var chId = (channelId && channelId !== 'all') ? channelId : 'all';
 
     for (i = 0; i < batch.results.length; i++) {
         var productRecords = extractor.extractRecordsFromProduct(
-            batch.results[i], currency, chId, aggregate
+            batch.results[i], currency, channelId, aggregate, opts
         );
         if (productRecords.length) {
             records = records.concat(productRecords);

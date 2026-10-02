@@ -911,8 +911,71 @@ function transformProduct(ctpProduct) {
     };
 }
 
+/**
+ * Map each priced CT variant to the exact SFCC product-id the product migration
+ * emits, WITHOUT running the full transform. Used by the price book migration so a
+ * price row lands on a product that actually exists in the
+ * catalog (the migration exports variants as {masterId}-{position}, never as the SKU).
+ *
+ * Mirrors transformProduct's id assignment 1:1:
+ *   - masterId = resolveMasterProductId(ctpProduct)   (schema id -> ID, else CT<uuid>)
+ *   - variation master (base product with emitted variants): each variant product is
+ *     {masterId}-{position} -- master variant is -1, then -2, -3 ... in CT current order
+ *   - set / bundle: no variant products are emitted, so a price attaches to {masterId}
+ * Reads masterData.current only, exactly like transformProduct (never staged).
+ *
+ * @param {Object} ctpProduct
+ * @returns {{ masterId: string, productKind: string, isVariationMaster: boolean,
+ *            variants: Array<{ productId: string, sku: string, source: Object }>,
+ *            bySku: Object.<string,string> }}
+ */
+function getVariantProductIds(ctpProduct) {
+    ctpProduct = ctpProduct || {};
+    var data        = (ctpProduct.masterData && ctpProduct.masterData.current) || {};
+    var masterId    = resolveMasterProductId(ctpProduct);
+    var productKind = detectProductKind(ctpProduct, data);
+    var mv          = data.masterVariant || {};
+    var ctpVars     = data.variants || [];
+
+    var variants = [];
+    var seq = 0;
+    function push(v) {
+        if (!v) return;
+        seq += 1;
+        variants.push({
+            productId: masterId ? (String(masterId) + '-' + seq) : ('variant-' + seq),
+            sku:       v.sku || '',
+            source:    v
+        });
+    }
+    if (mv && (mv.sku || (mv.attributes && mv.attributes.length) || ctpVars.length
+            || mv.id != null || Object.keys(mv).length)) {
+        push(mv);
+    }
+    var i;
+    for (i = 0; i < ctpVars.length; i++) push(ctpVars[i]);
+
+    var isVariationMaster = productKind === 'base' && variants.length > 0;
+
+    var bySku = {};
+    for (i = 0; i < variants.length; i++) {
+        var s = variants[i].sku ? String(variants[i].sku).trim() : '';
+        if (s && !bySku[s]) bySku[s] = variants[i].productId;
+    }
+
+    return {
+        masterId:          masterId,
+        productKind:       productKind,
+        isVariationMaster: isVariationMaster,
+        variants:          variants,
+        bySku:             bySku
+    };
+}
+
 module.exports = {
     transformProduct:       transformProduct,
+    getVariantProductIds:   getVariantProductIds,
+    detectProductKind:      detectProductKind,
     bundleMemberIds:        bundleMemberIds,
     resolveMasterProductId: resolveMasterProductId,
     sanitizeId:             sanitizeId,
