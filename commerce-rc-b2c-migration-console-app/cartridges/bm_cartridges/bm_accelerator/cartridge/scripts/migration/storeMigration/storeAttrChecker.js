@@ -64,14 +64,31 @@ function getCtpStoreFields() {
 
 function checkMissingAttributes() {
     var attrIdMapSession = require('*/cartridge/scripts/migration/core/attrIdMapSession');
-    return runner.checkMissing(
+    var present = {};
+    function storeFields() {
+        var fields = getCtpStoreFields();
+        var i;
+        for (i = 0; i < fields.length; i++) {
+            if (fields[i] && fields[i].name) present[String(fields[i].name).toLowerCase()] = true;
+        }
+        return fields;
+    }
+    var result = runner.checkMissing(
         SFCC_OBJECT_TYPE,
-        getCtpStoreFields,
+        storeFields,
         null,
         attrIdMapSession.read('store'),
         'store',
         'Store'
     );
+    // The curated skip list names every address field a project might use (read into the store
+    // address); show only the ones this project's store types have.
+    if (result && result.skipped && result.skipped.length) {
+        result.skipped = result.skipped.filter(function (s) {
+            return s && s.id && present[String(s.id).toLowerCase()];
+        });
+    }
+    return result;
 }
 
 function createAttributes(attrs) {

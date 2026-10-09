@@ -83,7 +83,7 @@ function buildStoreXml(store, attrMap) {
         + optionalElement('longitude', store.longitude)
         + optionalElement('inventory-list-id', store.inventoryListId)
         + '        <store-locator-enabled-flag>' + (store.storeLocatorEnabled ? 'true' : 'false') + '</store-locator-enabled-flag>\n'
-        + '        <demandware-pos-enabled-flag>' + (store.demandwarePosEnabled ? 'true' : 'false') + '</demandware-pos-enabled-flag>\n'
+        // store.xsd deprecates demandware-pos-enabled-flag in favour of pos-enabled-flag.
         + '        <pos-enabled-flag>' + (store.posEnabled ? 'true' : 'false') + '</pos-enabled-flag>\n'
         + buildCustomAttributes(mapped.custom)
         + '    </store>\n';

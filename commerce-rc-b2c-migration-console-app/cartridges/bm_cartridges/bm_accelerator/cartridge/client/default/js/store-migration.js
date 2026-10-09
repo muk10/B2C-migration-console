@@ -118,8 +118,10 @@
         var checkAttrsBtn = document.getElementById('acc-check-attrs-btn');
         var attrCheckMsg = document.getElementById('acc-attr-check-msg');
         var attrResults = document.getElementById('acc-attr-results');
+        var idSourceEl = document.getElementById('acc-st-id-source');
 
         var ctpStores = [];
+        var idSource = '';
         var fileName = defaultFileName();
         var fullRunning = false;
         var fullFinished = false;
@@ -152,18 +154,63 @@
             return refs;
         }
 
+        /** Store type chosen per selected store: ref → physical | online. */
+        function getSelectedStoreTypes() {
+            var types = {};
+            var cbs = document.querySelectorAll('.acc-st-store-cb');
+            var i;
+            for (i = 0; i < cbs.length; i++) {
+                if (!cbs[i].checked) continue;
+                var sel = document.querySelector('.acc-st-type[data-idx="' + cbs[i].getAttribute('data-idx') + '"]');
+                types[cbs[i].getAttribute('data-ref')] = sel ? sel.value : 'physical';
+            }
+            return types;
+        }
+
         function updateSelectionSummary() {
-            var checked = getSelectedStoreRefs().length;
+            var types = getSelectedStoreTypes();
+            var refs = Object.keys(types);
+            var physical = 0;
+            var i;
+            for (i = 0; i < refs.length; i++) {
+                if (types[refs[i]] === 'physical') physical++;
+            }
+            var online = refs.length - physical;
             var total = ctpStores.length;
             if (summaryEl) {
                 summaryEl.textContent = total
-                    ? checked + ' of ' + total + ' selected for migration'
+                    ? physical + ' physical store(s) will be exported'
+                        + (online ? ', ' + online + ' online store(s) skipped' : '')
+                        + ' (' + refs.length + ' of ' + total + ' selected)'
                     : '';
-                summaryEl.style.color = checked ? '#2e7d32' : '#e65100';
+                summaryEl.style.color = physical ? '#2e7d32' : '#e65100';
             }
             if (startBtn && total && !fullRunning && !fullFinished) {
-                startBtn.disabled = !checked;
+                startBtn.disabled = !physical;
             }
+        }
+
+        function renderIssues(issues, type) {
+            if (type !== 'physical') {
+                return '<span style="color:#8a9ab8;">Not exported as a store: an online store (sales channel) belongs to the site setup</span>';
+            }
+            var list = issues || [];
+            if (!list.length) return '<span style="color:#2e7d32;">&#10004; No problems found</span>';
+            var html = '';
+            var i;
+            for (i = 0; i < list.length; i++) {
+                var err = list[i].level === 'error';
+                html += '<div style="color:' + (err ? '#c62828' : '#b26a00') + ';">' + (err ? '&#10006; ' : '&#9888; ')
+                    + escHtml(list[i].message) + '</div>';
+            }
+            return html;
+        }
+
+        function refreshRow(idx) {
+            var s = ctpStores[idx];
+            var sel = document.querySelector('.acc-st-type[data-idx="' + idx + '"]');
+            var cell = document.getElementById('acc-st-checks-' + idx);
+            if (s && sel && cell) cell.innerHTML = renderIssues(s.issues, sel.value);
         }
 
         function renderStoresTable(stores) {
@@ -188,13 +235,20 @@
             var i;
             for (i = 0; i < ctpStores.length; i++) {
                 var s = ctpStores[i];
+                var type = s.suggestedType === 'online' ? 'online' : 'physical';
                 html += '<tr class="st-stores-row" data-idx="' + i + '">'
                     + '<td style="text-align:center;"><input type="checkbox" class="acc-st-store-cb" data-ref="'
                     + escHtml(s.ref) + '" data-idx="' + i + '" checked/></td>'
-                    + '<td>' + escHtml(s.name) + '</td>'
+                    + '<td>' + escHtml(s.name)
+                    + (s.address ? '<div style="font-size:11px;color:#8a9ab8;">' + escHtml(s.address) + '</div>' : '') + '</td>'
                     + '<td>' + (s.key ? '<code>' + escHtml(s.key) + '</code>' : '<span style="color:#8a9ab8;">&mdash;</span>') + '</td>'
+                    + '<td><select class="acc-st-type" data-idx="' + i + '" title="' + escHtml('Suggested: ' + (s.typeReasons || []).join('; ')) + '">'
+                    + '<option value="physical"' + (type === 'physical' ? ' selected' : '') + '>Physical store</option>'
+                    + '<option value="online"' + (type === 'online' ? ' selected' : '') + '>Online store (sales channel)</option>'
+                    + '</select></td>'
                     + '<td><code>' + escHtml(s.sfccStoreId) + '</code></td>'
                     + '<td style="font-size:12px;color:#54698d;">' + (s.countries ? escHtml(s.countries) : '&mdash;') + '</td>'
+                    + '<td style="font-size:12px;" id="acc-st-checks-' + i + '">' + renderIssues(s.issues, type) + '</td>'
                     + '</tr>';
             }
 
@@ -240,6 +294,14 @@
                 });
             }
 
+            var typeSels = document.querySelectorAll('.acc-st-type');
+            for (i = 0; i < typeSels.length; i++) {
+                typeSels[i].addEventListener('change', function () {
+                    refreshRow(parseInt(this.getAttribute('data-idx'), 10));
+                    updateSelectionSummary();
+                });
+            }
+
             updateSelectionSummary();
         }
 
@@ -268,10 +330,18 @@
                 reloadBtn.textContent = 'Loading...';
             }
 
-            get(cfg.listStoresUrl, function (data) {
+            var listUrl = cfg.listStoresUrl;
+            if (idSource) {
+                listUrl += (listUrl.indexOf('?') === -1 ? '?' : '&') + 'idSource=' + encodeURIComponent(idSource);
+            }
+            get(listUrl, function (data) {
                 if (reloadBtn) {
                     reloadBtn.disabled = false;
                     reloadBtn.textContent = 'Reload Stores';
+                }
+                if (data.ok && data.idSource) {
+                    idSource = data.idSource;
+                    if (idSourceEl) idSourceEl.value = data.idSource;
                 }
                 if (!data.ok) {
                     if (loadingEl) loadingEl.style.display = 'none';
@@ -335,6 +405,7 @@
 
         function beginMigration() {
             var keys = getSelectedStoreRefs();
+            var types = getSelectedStoreTypes();
             if (!keys.length) {
                 if (selectionErr) {
                     selectionErr.style.display = 'block';
@@ -359,7 +430,9 @@
                 'offset=0'
                 + '&exportKey=full'
                 + '&fileName=' + encodeURIComponent(fileName)
-                + '&keys=' + encodeURIComponent(JSON.stringify(keys)),
+                + '&keys=' + encodeURIComponent(JSON.stringify(keys))
+                + '&types=' + encodeURIComponent(JSON.stringify(types))
+                + '&idSource=' + encodeURIComponent(idSource || ''),
                 function (data) {
                     if (!data.ok) {
                         setPhase('full', 'build', 'error', data.error || 'Failed', 50);
@@ -369,9 +442,12 @@
                     }
                     var uploaded = data.fileName || fileName;
                     setPhase('full', 'build', 'done',
-                        'Uploaded ' + uploaded + ' (' + (data.total || 0) + ' store(s))', 100);
+                        'Uploaded ' + uploaded + ' (' + (data.built || 0) + ' store(s))', 100);
                     if (fullOverallEl) {
-                        fullOverallEl.textContent = (data.built || 0) + ' element(s) written, ' + (data.failed || 0) + ' failed';
+                        fullOverallEl.textContent = (data.built || 0) + ' store(s) written, ' + (data.failed || 0) + ' failed'
+                            + (data.online ? ', ' + data.online + ' online store(s) skipped' : '')
+                            + (data.warnings ? ', ' + data.warnings + ' warning(s) (see Checks)' : '')
+                            + (data.errors && data.errors.length ? ' — ' + data.errors.join('; ') : '');
                     }
                     finalizeFull(true, uploaded);
                 }
@@ -381,6 +457,13 @@
         if (reloadBtn) {
             reloadBtn.addEventListener('click', function () {
                 loadStores(true);
+            });
+        }
+
+        if (idSourceEl) {
+            idSourceEl.addEventListener('change', function () {
+                idSource = idSourceEl.value;
+                if (ctpStores.length) loadStores(true);
             });
         }
 

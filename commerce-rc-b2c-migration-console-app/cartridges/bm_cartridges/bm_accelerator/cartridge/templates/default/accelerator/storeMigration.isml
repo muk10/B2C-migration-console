@@ -68,11 +68,20 @@
             <div class="st-details-panel__head">
                 <span style="font-weight:700;font-size:14px;color:#16325c;">Stores to Migrate</span>
                 <button id="acc-reload-stores-btn" type="button" class="acc-btn acc-btn--ghost">Load Stores</button>
+                <label for="acc-st-id-source" style="font-size:13px;color:#54698d;">SFCC store ID from</label>
+                <select id="acc-st-id-source" style="font-size:13px;">
+                    <option value="key">Key</option>
+                    <option value="id">ID</option>
+                    <option value="name">Name</option>
+                </select>
                 <span id="acc-st-summary" style="font-size:13px;color:#54698d;font-weight:600;"></span>
             </div>
             <div class="st-details-panel__body">
                 <p style="font-size:13px;color:#54698d;margin:0 0 12px;">
-                    Uncheck any store you want to <strong>skip</strong>. Migration only exports checked stores into one XML file.
+                    Set each store's <strong>Type</strong>. A <strong>Physical store</strong> becomes an SFCC store (store locator, pick-up).
+                    An <strong>Online store</strong> is a sales channel, so it is not exported as a store; its countries and channels belong to the site setup.
+                    The type is suggested from the store's address, coordinates, opening hours and pick-up details (hover for the reason).
+                    Uncheck any store you want to <strong>skip</strong>. Check the <strong>Checks</strong> column before you export.
                 </p>
                 <div id="acc-st-loading" style="font-size:13px;color:#54698d;"><isprint value="${pdict.migrationUi.loadStoresHint}" encoding="off"/></div>
                 <div id="acc-st-error" style="display:none;font-size:13px;color:#c62828;margin-bottom:10px;"></div>
@@ -84,8 +93,10 @@
                                 <th style="width:36px;text-align:center;"><input type="checkbox" id="acc-st-select-all" checked title="Select all"/></th>
                                 <th>Name</th>
                                 <th>${pdict.migrationUi.storeKeyCol}</th>
+                                <th>Type</th>
                                 <th>SFCC Store ID</th>
                                 <th>Countries</th>
+                                <th>Checks</th>
                             </tr>
                         </thead>
                         <tbody id="acc-st-tbody"></tbody>

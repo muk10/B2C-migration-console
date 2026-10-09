@@ -446,6 +446,28 @@
     },
     "skipped": {
         "ct": {
+            "Store": {
+                "streetName": "Read into the SFCC store address (address1, address2, city, postal-code, state-code, country-code, phone, latitude, longitude) by the store export, not created as an attribute.",
+                "street": "Read into the SFCC store address (address1, address2, city, postal-code, state-code, country-code, phone, latitude, longitude) by the store export, not created as an attribute.",
+                "address": "Read into the SFCC store address (address1, address2, city, postal-code, state-code, country-code, phone, latitude, longitude) by the store export, not created as an attribute.",
+                "addressLine1": "Read into the SFCC store address (address1, address2, city, postal-code, state-code, country-code, phone, latitude, longitude) by the store export, not created as an attribute.",
+                "streetNumber": "Read into the SFCC store address (address1, address2, city, postal-code, state-code, country-code, phone, latitude, longitude) by the store export, not created as an attribute.",
+                "houseNumber": "Read into the SFCC store address (address1, address2, city, postal-code, state-code, country-code, phone, latitude, longitude) by the store export, not created as an attribute.",
+                "additionalStreetInfo": "Read into the SFCC store address (address1, address2, city, postal-code, state-code, country-code, phone, latitude, longitude) by the store export, not created as an attribute.",
+                "addressLine2": "Read into the SFCC store address (address1, address2, city, postal-code, state-code, country-code, phone, latitude, longitude) by the store export, not created as an attribute.",
+                "zip": "Read into the SFCC store address (address1, address2, city, postal-code, state-code, country-code, phone, latitude, longitude) by the store export, not created as an attribute.",
+                "zipCode": "Read into the SFCC store address (address1, address2, city, postal-code, state-code, country-code, phone, latitude, longitude) by the store export, not created as an attribute.",
+                "postcode": "Read into the SFCC store address (address1, address2, city, postal-code, state-code, country-code, phone, latitude, longitude) by the store export, not created as an attribute.",
+                "town": "Read into the SFCC store address (address1, address2, city, postal-code, state-code, country-code, phone, latitude, longitude) by the store export, not created as an attribute.",
+                "state": "Read into the SFCC store address (address1, address2, city, postal-code, state-code, country-code, phone, latitude, longitude) by the store export, not created as an attribute.",
+                "province": "Read into the SFCC store address (address1, address2, city, postal-code, state-code, country-code, phone, latitude, longitude) by the store export, not created as an attribute.",
+                "country": "Read into the SFCC store address (address1, address2, city, postal-code, state-code, country-code, phone, latitude, longitude) by the store export, not created as an attribute.",
+                "telephone": "Read into the SFCC store address (address1, address2, city, postal-code, state-code, country-code, phone, latitude, longitude) by the store export, not created as an attribute.",
+                "phoneNumber": "Read into the SFCC store address (address1, address2, city, postal-code, state-code, country-code, phone, latitude, longitude) by the store export, not created as an attribute.",
+                "lat": "Read into the SFCC store address (address1, address2, city, postal-code, state-code, country-code, phone, latitude, longitude) by the store export, not created as an attribute.",
+                "lng": "Read into the SFCC store address (address1, address2, city, postal-code, state-code, country-code, phone, latitude, longitude) by the store export, not created as an attribute.",
+                "lon": "Read into the SFCC store address (address1, address2, city, postal-code, state-code, country-code, phone, latitude, longitude) by the store export, not created as an attribute."
+            },
             "Order": {
                 "id": "CT Order UUID - not an SFCC Order system attribute; used only for traceability in migration if needed.",
                 "version": "Platform version metadata - not migrated as an SFCC attribute.",

@@ -2389,7 +2389,7 @@ exports.StoreMigration = function () {
         impexUrl:            pageCtx.impexUrl,
         cssUrl:              URLUtils.staticURL('/css/accelerator-migration.css').toString(),
         attrPreflightJsUrl:  URLUtils.staticURL('/js/attr-preflight.js').toString() + '?v=14',
-        storeMigrationJsUrl: URLUtils.staticURL('/js/store-migration.js').toString() + '?v=11',
+        storeMigrationJsUrl: URLUtils.staticURL('/js/store-migration.js').toString() + '?v=12',
         jobsUrl:             jobsUrl
     }));
 };
@@ -2551,23 +2551,20 @@ exports.GetStoreSummary = function () {
 exports.GetStoreSummary.public = true;
 
 /**
- * List all CT stores for the migration checklist UI.
- * GET — no params required.
+ * List all source stores for the migration checklist UI, with the suggested store type
+ * (physical / online) and the checks for each store.
+ * GET — optional idSource=key|id|name (SFCC store ID source).
  */
 exports.ListStores = function () {
     response.setContentType('application/json');
     try {
         var fetcher     = getMigrationFetcher('store');
         var transformer = require('*/cartridge/scripts/migration/storeMigration/storeTransformer');
+        var idSource    = getParam('idSource') || transformer.defaultIdSource();
         var stores      = fetcher.fetchAllCtpStores();
-        var list        = [];
-        var i;
+        var list        = transformer.previewStores(stores, fetcher.fetchChannelMap(), { idSource: idSource });
 
-        for (i = 0; i < stores.length; i++) {
-            list.push(transformer.toSummary(stores[i]));
-        }
-
-        jsonResponse({ ok: true, total: stores.length, stores: list });
+        jsonResponse({ ok: true, total: stores.length, stores: list, idSource: idSource, idSources: transformer.ID_SOURCES });
     } catch (e) {
         jsonResponse({ ok: false, error: e.message || String(e) });
     }
@@ -2594,17 +2591,24 @@ exports.FullStoreBuildBatch = function () {
     var rawKeys    = getParam('keys');
     var singleFile = getParam('singleFile') !== 'false';
 
+    var rawTypes   = getParam('types');
+
     var keys = null;
-    if (rawKeys) {
-        try { keys = JSON.parse(rawKeys); } catch (e) {
-            jsonResponse({ ok: false, error: 'Invalid keys JSON' });
-            return;
-        }
+    var types = null;
+    try {
+        if (rawKeys) keys = JSON.parse(rawKeys);
+        if (rawTypes) types = JSON.parse(rawTypes);
+    } catch (e) {
+        jsonResponse({ ok: false, error: 'Invalid keys or types JSON' });
+        return;
     }
 
     try {
         var fullRunner = require('*/cartridge/scripts/migration/storeMigration/fullMigrationRunner');
-        jsonResponse(fullRunner.runBatch(offset, exportKey, fileName, keys, singleFile));
+        jsonResponse(fullRunner.runBatch(offset, exportKey, fileName, keys, singleFile, {
+            types:    types,
+            idSource: getParam('idSource') || ''
+        }));
     } catch (e) {
         jsonResponse({ ok: false, error: e.message || String(e) });
     }

@@ -1,7 +1,6 @@
 'use strict';
 
 var fileResolver = require('*/cartridge/scripts/migration/core/migrationFileResolver');
-var uploader     = require('*/cartridge/scripts/migration/core/webDavUploader');
 
 var MODULE_KEY = 'store';
 var MAX_VERSION = 999;
@@ -39,7 +38,9 @@ function resolveFileName(exportKey, offset, batchSize, customFileName) {
     if (customFileName) {
         var candidate = batchFileName(customFileName, batchIndex);
         var version   = batchIndex + 1;
-        while (version <= MAX_VERSION && uploader.fileExists(impexPath, candidate)) {
+        // The export is written under IMPEX, so look there: a WebDAV HEAD needs a BM login that
+        // basic auth may refuse, and then every re-export reused -v001 and overwrote the last file.
+        while (version <= MAX_VERSION && fileResolver.localFileExists(impexPath + '/' + candidate)) {
             var base = sanitizeFileName(customFileName).replace(/\.xml$/i, '').replace(/-v\d{3}$/i, '');
             var vs = String(version);
             while (vs.length < 3) {
