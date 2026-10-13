@@ -484,7 +484,7 @@ exports.OrderMigration = function () {
         paymentStateFilters: migrationData.getPaymentStateFilters(platformId),
         cssUrl:              URLUtils.staticURL('/css/accelerator-migration.css').toString(),
         attrPreflightJsUrl:  URLUtils.staticURL('/js/attr-preflight.js').toString() + '?v=14',
-        orderMigrationJsUrl: URLUtils.staticURL('/js/order-migration.js').toString() + '?v=9'
+        orderMigrationJsUrl: URLUtils.staticURL('/js/order-migration.js').toString() + '?v=10'
     }));
 };
 exports.OrderMigration.public = true;
@@ -501,6 +501,7 @@ function parseOrderYears(raw) {
 /**
  * Export the next batch of orders into IMPEX XML part files.
  * POST: years=1|2|3|all&maxCount=optional&orderState=optional&paymentState=optional
+ *       &customerIds=optional (comma-separated source customer IDs)
  *       &state=optional (JSON state from the previous response; omit to start a run)
  */
 exports.ExportOrders = function () {
@@ -511,6 +512,7 @@ exports.ExportOrders = function () {
     var maxCount     = maxRaw ? parseInt(maxRaw, 10) : null;
     var orderState   = getParam('orderState') || String(session.custom.orderExportOrderState || '');
     var paymentState = getParam('paymentState') || String(session.custom.orderExportPaymentState || '');
+    var customerIds  = getParam('customerIds') || '';
 
     if ([0, 1, 2, 3].indexOf(years) < 0) {
         jsonResponse({ ok: false, error: 'Date range must be 1, 2 or 3 years, or all' });
@@ -529,7 +531,8 @@ exports.ExportOrders = function () {
             years:        years,
             maxCount:     maxCount,
             orderState:   orderState,
-            paymentState: paymentState
+            paymentState: paymentState,
+            customerIds:  customerIds
         }, stateRaw ? JSON.parse(stateRaw) : null);
 
         if (!result.ok) {
@@ -584,6 +587,7 @@ exports.ExportOrders.public = true;
 /**
  * Count orders matching export filters (commercetools query total).
  * POST: years=1|2|3|all&maxCount=optional&orderState=optional&paymentState=optional
+ *       &customerIds=optional (comma-separated source customer IDs)
  */
 exports.CountOrders = function () {
     var platformId = resolvePlatform();
@@ -598,6 +602,7 @@ exports.CountOrders = function () {
     var maxCount     = maxRaw ? parseInt(maxRaw, 10) : null;
     var orderState   = getParam('orderState') || '';
     var paymentState = getParam('paymentState') || '';
+    var customerIds  = getParam('customerIds') || '';
 
     if ([0, 1, 2, 3].indexOf(years) < 0) {
         jsonResponse({ ok: false, error: 'Date range must be 1, 2 or 3 years, or all' });
@@ -616,7 +621,8 @@ exports.CountOrders = function () {
             years:        years,
             maxCount:     maxCount,
             orderState:   orderState,
-            paymentState: paymentState
+            paymentState: paymentState,
+            customerIds:  customerIds
         });
 
         jsonResponse({

@@ -29,13 +29,13 @@ function createCustomer(token, listId, profile, password) {
             return result;
         }
 
-        // CustomerMgr.createCustomer(login, pass, customerNo:String) sets a specific number.
-        // CustomerMgr.createCustomer(login, pass, list:CustomerList) auto-generates a numeric ID
-        // (used when the source system has no native customer number to carry over).
+        // CustomerMgr.createCustomer(login, pass, customerNo:String) sets a specific number;
+        // CustomerMgr.createCustomer(login, pass) lets SFCC generate one. There is no CustomerList
+        // variant: a list passed as the third argument would be stored as the customer number text.
         var sourceNo = profile.customer_no || profile.c_shopify_customer_id || null;
         var customer = sourceNo
             ? CustomerMgr.createCustomer(login, password, String(sourceNo))
-            : CustomerMgr.createCustomer(login, password, list);
+            : CustomerMgr.createCustomer(login, password);
         if (!customer) {
             Transaction.rollback();
             result.error = 'CustomerMgr.createCustomer returned null';

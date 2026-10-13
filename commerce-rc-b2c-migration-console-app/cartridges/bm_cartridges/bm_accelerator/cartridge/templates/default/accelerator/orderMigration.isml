@@ -104,6 +104,13 @@
                         <input type="number" id="acc-ord-max-count" class="acc-form__input" min="1"
                                placeholder="${Resource.msg('accelerator.ordermigration.maxcount.placeholder', 'accelerator', null)}"/>
                     </div>
+                    <isif condition="${pdict.platformId === 'commercetools'}">
+                        <div>
+                            <label for="acc-ord-customer-ids">Customer ID(s)</label>
+                            <input type="text" id="acc-ord-customer-ids" class="acc-form__input"
+                                   placeholder="Optional: commercetools customer IDs, comma-separated"/>
+                        </div>
+                    </isif>
                 </div>
 
                 <div class="acc-order-count" id="acc-ord-count" aria-live="polite">

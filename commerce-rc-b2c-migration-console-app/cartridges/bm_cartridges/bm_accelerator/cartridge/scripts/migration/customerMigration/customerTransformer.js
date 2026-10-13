@@ -89,8 +89,11 @@ function transformCustomer(ctpCustomer) {
     if (ctpCustomer.salutation) profile.salutation = ctpCustomer.salutation;
     if (ctpCustomer.title)      profile.title       = ctpCustomer.title;
 
-    // customerNumber maps to the native SFCC customerNo (per nativeFieldMap.json)
-    if (ctpCustomer.customerNumber) profile.customer_no = ctpCustomer.customerNumber;
+    // customerNumber maps to the native SFCC customerNo (per nativeFieldMap.json); without one, the
+    // CT customer ID, the same number the XML export and the order migration use for this customer.
+    if (ctpCustomer.customerNumber || ctpCustomer.id) {
+        profile.customer_no = String(ctpCustomer.customerNumber || ctpCustomer.id);
+    }
 
     // CT built-in fields with a native SFCC Profile equivalent
     if (ctpCustomer.vatId)      profile.tax_id          = ctpCustomer.vatId;

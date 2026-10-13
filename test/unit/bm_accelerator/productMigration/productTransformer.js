@@ -123,6 +123,14 @@ describe('productTransformer map-driven system fields', function () {
         assert.equal(t.ctpKey, 'human-key');
     });
 
+    it('reads the product type key from the expanded product type', function () {
+        var transformer = loadTransformer({});
+        var p = sampleProduct();
+        p.productType = { typeId: 'product-type', id: '1e9527f9-a358-4902-b589-9b37fe229595', obj: { key: 'personalizable', attributes: [] } };
+        assert.equal(transformer.transformProduct(p).ctpProductTypeKey, 'personalizable');
+        assert.equal(transformer.transformProduct(sampleProduct()).ctpProductTypeKey, '');
+    });
+
     it('maps description → shortDescription via schema', function () {
         var transformer = loadTransformer({});
         var t = transformer.transformProduct(sampleProduct());

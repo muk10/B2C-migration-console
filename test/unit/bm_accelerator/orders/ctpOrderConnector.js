@@ -177,6 +177,35 @@ describe('ctpOrderConnector', function () {
         });
     });
 
+    describe('customer filter', function () {
+        /**
+         * @returns {string} decoded where predicate of the first orders request
+         */
+        function firstWhere() {
+            var url = httpCalls.filter(function (c) { return c.method === 'GET'; })[0].url;
+            return decodeURIComponent(url.split('where=')[1].split('&')[0]);
+        }
+
+        it('limits the count and the export to the given customers', function () {
+            connector.countOrders({ years: 'all', customerIds: 'ac866650-d74e-4e80-a3d9-95fe10a9db05, cust-2' });
+            assert.equal(firstWhere(), 'customerId in ("ac866650-d74e-4e80-a3d9-95fe10a9db05", "cust-2")');
+
+            assert.include(connector.buildOrdersWhere({ sinceDate: '2026-01-01', orderState: 'Complete', customerIds: ['c1'] }),
+                'orderState = "Complete" and customerId in ("c1")');
+        });
+
+        it('adds no filter when no customer is given', function () {
+            connector.countOrders({ years: 'all', customerIds: '  ' });
+            assert.notInclude(httpCalls.filter(function (c) { return c.method === 'GET'; })[0].url, 'where=');
+        });
+
+        it('splits on commas and spaces, drops duplicates and refuses anything but letters, digits and hyphens', function () {
+            assert.deepEqual(connector.parseCustomerIds('a1, b2 a1,,c3'), ['a1', 'b2', 'c3']);
+            assert.deepEqual(connector.parseCustomerIds(''), []);
+            assert.throws(function () { connector.parseCustomerIds('a1") or ("x'); }, /letters, digits and hyphens/);
+        });
+    });
+
     describe('cursor paging and exact counts', function () {
         /**
          * Connector over a synthetic order set that behaves like commercetools:

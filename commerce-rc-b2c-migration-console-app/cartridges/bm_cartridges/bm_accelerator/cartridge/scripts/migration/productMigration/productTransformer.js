@@ -779,6 +779,8 @@ function transformProduct(ctpProduct) {
     var getSourceLocales = makeCtpLocaleGetter(ctpProduct, data, mv);
 
     var ctpKey = ctpProduct.key || '';
+    // Product type key (e.g. "personalizable"): products are fetched with expand=productType
+    var ctpProductTypeKey = (ctpProduct.productType && ctpProduct.productType.obj && ctpProduct.productType.obj.key) || '';
     // Schema map id → ID → catalog product-id attribute (do not prefer key)
     var masterId = resolveMasterProductId(ctpProduct);
 
@@ -870,6 +872,7 @@ function transformProduct(ctpProduct) {
         productId:        masterId,
         ctpId:            ctpProduct.id,
         ctpKey:           ctpKey,
+        ctpProductTypeKey: ctpProductTypeKey,
         name:             name,
         shortDescription: shortDescription,
         longDescription:  longDescription,

@@ -58,6 +58,7 @@ function load(orders, opts) {
         DEFAULT_LIMIT:   20,
         SUPPORTS_CURSOR: true,
         parseYears:      function (v) { return v === 'all' ? 0 : 1; },
+        parseCustomerIds: function (v) { return v ? String(v).split(',') : []; },
         dateYearsAgo:    function () { return ''; },
         authenticate:    function () { return 't'; },
         countOrders:     function (f) { return { exportCount: f.maxCount && f.maxCount < orders.length ? f.maxCount : orders.length }; },
@@ -196,6 +197,12 @@ describe('order fullMigrationRunner (batched export)', function () {
         assert.isNull(env.fetches[0].after);
         env.fetches.slice(1).forEach(function (p) { assert.isObject(p.after); });
         env.fetches.forEach(function (p) { assert.isFalse(p.withTotal); });
+    });
+
+    it('passes the customer filter to every page request', function () {
+        var env = load(makeOrders(250));
+        runAll(env.runner, { years: 'all', customerIds: 'c1,c2' });
+        env.fetches.forEach(function (p) { assert.deepEqual(p.customerIds, ['c1', 'c2']); });
     });
 
     it('stops at the maximum order count', function () {

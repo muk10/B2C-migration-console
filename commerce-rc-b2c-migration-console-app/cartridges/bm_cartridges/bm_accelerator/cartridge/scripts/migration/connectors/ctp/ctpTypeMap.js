@@ -157,7 +157,7 @@ function getSfccTypeOptions(ctpType, defaultType) {
  * @returns {Object}
  */
 function enrichMissingAttribute(entry, resolveFn) {
-    var resolver = resolveFn || resolveCustomFieldType;
+    var resolver = resolveFn || resolveSourceFieldType;
     var sourceType = entry.ctpType || entry.sourceType || '';
     var sfccType = entry.sfccType || resolver(sourceType) || 'string';
     var scope = attrBuilder.resolveAttributeScope(sourceType, entry.sfccObjectType);
@@ -180,6 +180,22 @@ function resolveProductType(ctpType) {
 
 function resolveCustomFieldType(typeName) {
     return CUSTOM_FIELD_TYPE_MAP[typeName] || 'string';
+}
+
+// Product-type attribute types are lowercase (set, boolean, number) and are not in the custom-field
+// map, so they fell through to 'string': pre-flight then created lists and booleans as String and
+// the import kept one value per list. These resolve to their real SFCC type; other product types
+// keep 'string' as before (money, for one, is not exported as a number).
+var PRODUCT_ATTR_DEFAULTS = { set: 'set_of_string', boolean: 'boolean', number: 'double' };
+
+/**
+ * Default SFCC type for a commercetools custom-field type (String, Set, ...) or product-type
+ * attribute type (set, boolean, number, ...).
+ * @param {string} typeName
+ * @returns {string}
+ */
+function resolveSourceFieldType(typeName) {
+    return CUSTOM_FIELD_TYPE_MAP[typeName] || PRODUCT_ATTR_DEFAULTS[typeName] || 'string';
 }
 
 function resolveResourceType(resourceTypeId) {

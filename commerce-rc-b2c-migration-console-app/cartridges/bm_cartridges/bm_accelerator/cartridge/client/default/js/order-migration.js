@@ -89,6 +89,7 @@
         var stateEl       = document.getElementById('acc-ord-order-state');
         var payEl         = document.getElementById('acc-ord-payment-state');
         var maxEl         = document.getElementById('acc-ord-max-count');
+        var customersEl   = document.getElementById('acc-ord-customer-ids');
         var countBtn      = document.getElementById('acc-ord-count-btn');
         var countValueEl  = document.getElementById('acc-ord-count-value');
         var countExportEl = document.getElementById('acc-ord-count-export');
@@ -125,6 +126,7 @@
             if (stateEl && stateEl.value) body += '&orderState=' + encodeURIComponent(stateEl.value);
             if (payEl && payEl.value) body += '&paymentState=' + encodeURIComponent(payEl.value);
             if (maxEl && maxEl.value) body += '&maxCount=' + encodeURIComponent(maxEl.value);
+            if (customersEl && customersEl.value.trim()) body += '&customerIds=' + encodeURIComponent(customersEl.value.trim());
             return body;
         }
 
@@ -305,6 +307,7 @@
         if (stateEl) stateEl.addEventListener('change', showCountIdle);
         if (payEl) payEl.addEventListener('change', showCountIdle);
         if (maxEl) maxEl.addEventListener('input', showCountIdle);
+        if (customersEl) customersEl.addEventListener('input', showCountIdle);
 
         if (countBtn) {
             countBtn.addEventListener('click', function (e) {

@@ -155,6 +155,15 @@ function checkMissingAttributes() {
         label:     'Key',
         ctpType:   'text'
     });
+    // The product type is a reference on the product, not a Product Type attribute: its key
+    // (e.g. "personalizable") tells the storefront which products are configurator products.
+    fields.push({
+        name:      'productType',
+        sourceKey: 'productType',
+        sfccId:    'productType',
+        label:     'Product Type',
+        ctpType:   'text'
+    });
     var variationIds = {};
     try {
         var ctpFields = getCtpProductTypeFields();

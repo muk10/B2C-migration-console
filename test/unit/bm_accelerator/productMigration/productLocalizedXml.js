@@ -875,6 +875,16 @@ describe('product localized XML', function () {
         assert.match(result.productXml, /custom-attribute attribute-id="key">bulk-seed-product-0000079/);
     });
 
+    it('writes the commercetools product type key as a custom attribute, only when there is one', function () {
+        var xmlBuilder = loadXmlBuilder();
+        var withType = xmlBuilder.buildProductXml(sampleTransformed({
+            ctpProductTypeKey: 'personalizable'
+        }), [], { localizableAttrIds: { productType: false } });
+        assert.match(withType.productXml, /custom-attribute attribute-id="productType">personalizable</);
+        var withoutType = xmlBuilder.buildProductXml(sampleTransformed({}), [], {});
+        assert.notMatch(withoutType.productXml, /attribute-id="productType"/);
+    });
+
     it('does not write CT key as custom attr when mapped to an SFCC system field', function () {
         var xmlBuilder = loadXmlBuilder(function (id) {
             return id === 'key' ? 'ID' : id;

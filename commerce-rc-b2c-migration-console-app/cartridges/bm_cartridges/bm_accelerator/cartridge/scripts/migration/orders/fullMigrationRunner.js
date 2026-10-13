@@ -36,6 +36,8 @@ function buildFetchOptions(options) {
         maxCount:     maxCount,
         orderState:   options.orderState || '',
         paymentState: options.paymentState || '',
+        // Only connectors that support the customer filter parse it; the others ignore it.
+        customerIds:  connector.parseCustomerIds ? connector.parseCustomerIds(options.customerIds) : [],
         sinceDate:    connector.dateYearsAgo(years)
     };
 }
@@ -157,7 +159,7 @@ function openPart(dir, state) {
 /**
  * Export the next slice of orders (up to ORDERS_PER_REQUEST) into XML part files.
  * Call first with no state; while the result is not done, call again with result.state.
- * @param {Object} options - { years, maxCount, orderState, paymentState, creds, maxFileChars (tests) }
+ * @param {Object} options - { years, maxCount, orderState, paymentState, customerIds, creds, maxFileChars (tests) }
  * @param {Object} [stateIn] - state from the previous call
  * @returns {Object}
  */
@@ -185,6 +187,7 @@ function runChunk(options, stateIn) {
                 sinceDate:    fetchOpts.sinceDate,
                 orderState:   fetchOpts.orderState,
                 paymentState: fetchOpts.paymentState,
+                customerIds:  fetchOpts.customerIds,
                 after:        cursor ? state.after : null,
                 offset:       state.offset,
                 limit:        PAGE_LIMIT,

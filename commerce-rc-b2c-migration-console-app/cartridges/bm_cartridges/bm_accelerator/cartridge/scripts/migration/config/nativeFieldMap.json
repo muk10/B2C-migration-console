@@ -503,7 +503,6 @@
             },
             "Product": {
                 "version": "Platform version metadata - not migrated as an SFCC attribute.",
-                "productType": "Product type reference - attributes come from the type; not a Product system attribute.",
                 "masterData": "Container for current/staged product data - fields under it are mapped individually."
             },
             "Customer": {

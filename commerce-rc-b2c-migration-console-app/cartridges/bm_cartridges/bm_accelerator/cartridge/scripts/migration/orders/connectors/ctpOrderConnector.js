@@ -94,6 +94,26 @@ function parseYears(value) {
 }
 
 /**
+ * Parse the optional customer filter: commercetools customer IDs, comma or space separated.
+ * IDs go into the query predicate, so only letters, digits and hyphens are accepted.
+ * @param {*} value - IDs from the request or options; empty means no filter
+ * @returns {string[]} distinct IDs, or [] for all customers
+ */
+function parseCustomerIds(value) {
+    var raw = Array.isArray(value) ? value : String(value || '').split(/[\s,]+/);
+    var ids = [];
+    for (var i = 0; i < raw.length; i++) {
+        var id = String(raw[i] || '').trim();
+        if (!id) continue;
+        if (!/^[A-Za-z0-9-]{1,64}$/.test(id)) {
+            throw new Error('Customer IDs may contain only letters, digits and hyphens');
+        }
+        if (ids.indexOf(id) === -1) ids.push(id);
+    }
+    return ids;
+}
+
+/**
  * Build ISO date string for N years ago from now.
  * @param {number} years - 0 means all orders
  * @returns {string} ISO date, or '' for all orders
@@ -113,6 +133,7 @@ function dateYearsAgo(years) {
  * @param {Object} [options.after] - cursor { createdAt, id }: only orders after this one
  * @param {string} [options.orderState] - commercetools orderState value
  * @param {string} [options.paymentState] - commercetools paymentState value
+ * @param {string[]} [options.customerIds] - only orders of these commercetools customers
  * @returns {string} predicate, or '' when there is no filter
  */
 function buildOrdersWhere(options) {
@@ -134,6 +155,9 @@ function buildOrdersWhere(options) {
     if (options.paymentState) {
         parts.push('paymentState = "' + options.paymentState + '"');
     }
+    if (options.customerIds && options.customerIds.length) {
+        parts.push('customerId in ("' + options.customerIds.join('", "') + '")');
+    }
     return parts.join(' and ');
 }
 
@@ -144,6 +168,7 @@ function buildOrdersWhere(options) {
  * @param {string} options.sinceDate - ISO date lower bound
  * @param {string} [options.orderState] - commercetools orderState value
  * @param {string} [options.paymentState] - commercetools paymentState value
+ * @param {string[]} [options.customerIds] - only orders of these commercetools customers
  * @param {Object} [options.after] - cursor { createdAt, id }; replaces offset (no 10,000 limit)
  * @param {boolean} [options.withTotal] - false skips the total (faster for cursor pages)
  * @param {number} options.offset
@@ -276,7 +301,7 @@ function fetchOrdersByDateRange(options) {
  * Count orders in [sinceDate, beforeDate). commercetools reports at most 10,000 once a
  * filter is set, so a capped window is split in two until every window is below the cap.
  * @param {string} token
- * @param {Object} filters - { orderState, paymentState }
+ * @param {Object} filters - { orderState, paymentState, customerIds }
  * @param {string} sinceDate - ISO lower bound ('' for none)
  * @param {string} beforeDate - ISO upper bound, exclusive ('' for none)
  * @param {number} depth - recursion depth
@@ -288,10 +313,12 @@ function countWindow(token, filters, sinceDate, beforeDate, depth) {
         beforeDate:   beforeDate,
         orderState:   filters.orderState,
         paymentState: filters.paymentState,
+        customerIds:  filters.customerIds,
         offset:       0,
         limit:        1
     }).total || 0;
-    var filtered = sinceDate || beforeDate || filters.orderState || filters.paymentState;
+    var filtered = sinceDate || beforeDate || filters.orderState || filters.paymentState
+        || (filters.customerIds && filters.customerIds.length);
     // without a where predicate the total is exact, however large
     if (!filtered || total < CT_RESULT_CAP || depth >= 30) return total;
 
@@ -305,13 +332,14 @@ function countWindow(token, filters, sinceDate, beforeDate, depth) {
 
 /**
  * @param {string} token
- * @param {Object} filters - { orderState, paymentState }
+ * @param {Object} filters - { orderState, paymentState, customerIds }
  * @returns {number|null} creation time (ms) of the oldest matching order
  */
 function oldestOrderTime(token, filters) {
     var page = fetchOrdersPage(token, {
         orderState:   filters.orderState,
         paymentState: filters.paymentState,
+        customerIds:  filters.customerIds,
         offset:       0,
         limit:        1,
         withTotal:    false
@@ -327,17 +355,20 @@ function oldestOrderTime(token, filters) {
  * @param {number} [options.maxCount] - optional export cap
  * @param {string} [options.orderState] - commercetools orderState filter
  * @param {string} [options.paymentState] - commercetools paymentState filter
+ * @param {string|string[]} [options.customerIds] - optional commercetools customer IDs
  * @param {Object} [options.creds] - optional credential override
  * @returns {Object} { total, exportCount }
  */
 function countOrders(options) {
     var years     = parseYears(options.years);
     var maxCount  = options.maxCount ? parseInt(String(options.maxCount), 10) : null;
+    var customerIds = parseCustomerIds(options.customerIds);
     var token     = authenticate(options.creds);
     var sinceDate = dateYearsAgo(years);
     var total     = countWindow(token, {
         orderState:   options.orderState || '',
-        paymentState: options.paymentState || ''
+        paymentState: options.paymentState || '',
+        customerIds:  customerIds
     }, sinceDate, '', 0);
     var exportCount = total;
 
@@ -358,6 +389,7 @@ module.exports = {
     addCustomerNumbers:      addCustomerNumbers,
     countOrders:             countOrders,
     buildOrdersWhere:        buildOrdersWhere,
+    parseCustomerIds:        parseCustomerIds,
     dateYearsAgo:            dateYearsAgo,
     parseYears:              parseYears,
     DEFAULT_LIMIT:           DEFAULT_LIMIT,

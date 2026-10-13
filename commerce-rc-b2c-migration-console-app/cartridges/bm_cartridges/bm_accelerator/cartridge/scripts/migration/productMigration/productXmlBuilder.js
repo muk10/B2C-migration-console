@@ -131,17 +131,22 @@ function sfccCustomAttrExists(attrId) {
 }
 
 /**
- * CT Product.key is product-level. Write as custom attr when the user created/mapped
- * it in Check Attributes; never when the session target is an SFCC system field.
+ * CT product-level fields (Product.key, the product type key) are not Product Type attributes.
+ * Write one as custom attr when the user created/mapped it in Check Attributes; never when the
+ * session target is an SFCC system field.
  */
-function ctpProductKeyCustomXml(t, productAttrMap, selectedVarAttrs, indent) {
-    if (!t || !t.ctpKey) return '';
-    var mapped = attrIdMapSession.resolve('key', productAttrMap);
-    var target = mapped || 'key';
+function ctpProductLevelCustomXml(sourceId, value, productAttrMap, selectedVarAttrs, indent) {
+    if (!value) return '';
+    var mapped = attrIdMapSession.resolve(sourceId, productAttrMap);
+    var target = mapped || sourceId;
     if (isProductSystemAttr(target)) return '';
-    var selected = selectedVarAttrs && selectedVarAttrs.indexOf('key') !== -1;
+    var selected = selectedVarAttrs && selectedVarAttrs.indexOf(sourceId) !== -1;
     if (!sfccCustomAttrExists(target) && !selected) return '';
-    return customAttributeXml(indent, target, t.ctpKey);
+    return customAttributeXml(indent, target, value);
+}
+
+function ctpProductKeyCustomXml(t, productAttrMap, selectedVarAttrs, indent) {
+    return t ? ctpProductLevelCustomXml('key', t.ctpKey, productAttrMap, selectedVarAttrs, indent) : '';
 }
 
 function mapGet(map, key) {
@@ -1047,6 +1052,7 @@ function buildProductXmlParts(t, selectedVarAttrs, xmlOpts) {
             t.variationAttributeNames
         );
         masterInner += ctpProductKeyCustomXml(t, productAttrMap, selectedVarAttrs, '            ');
+        masterInner += ctpProductLevelCustomXml('productType', t.ctpProductTypeKey, productAttrMap, selectedVarAttrs, '            ');
         if (masterInner) {
             productXml += '        <custom-attributes>\n' + masterInner + '        </custom-attributes>\n';
         }
